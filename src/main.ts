@@ -40,9 +40,11 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
   const ses = session.fromPartition(`clip-${config.alias}`);
   const client = registerClipSchemeHandlers(ses, config);
 
+  const ws = config.windowState;
   const win = new BrowserWindow({
-    width: config.windowState?.width ?? 1200,
-    height: config.windowState?.height ?? 800,
+    width: ws?.width ?? 1200,
+    height: ws?.height ?? 800,
+    ...(ws?.x != null && ws?.y != null ? { x: ws.x, y: ws.y } : {}),
     title: config.alias,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -55,9 +57,8 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
   const id = win.webContents.id;
   clipRegistry.set(id, { config, client });
 
-  // fixed: BrowserWindow 清理 — 删 registry + 清 webContents listeners + 清独立 session cache
-  win.on("closed", () => {
-    // persist windowState back to clips.json
+  // persist windowState before native window is destroyed
+  win.on("close", () => {
     try {
       const bounds = win.getBounds();
       const clips = readClips();
@@ -66,7 +67,13 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
         clips[idx].windowState = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
         writeClips(clips);
       }
-    } catch {}
+    } catch (err) {
+      console.error(`[windowState] persist failed for ${config.alias}:`, err);
+    }
+  });
+
+  // cleanup after native window is destroyed
+  win.on("closed", () => {
     clipRegistry.delete(id);
     win.webContents.removeAllListeners();
     ses.clearCache().catch(() => {});

@@ -5,5 +5,5 @@ export interface ClipConfig {
   host: string;    // 如 "100.66.47.40"
   port: number;    // 如 9875
   token: string;   // Clip 鉴权 token
-  windowState?: { width: number; height: number; x?: number; y?: number; debugPreset?: string };
+  windowState?: { width: number; height: number; x?: number; y?: number };
 }
