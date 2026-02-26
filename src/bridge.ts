@@ -89,8 +89,12 @@ export function registerClipSchemeHandlers(
   config: ClipConfig
 ) {
   const client = createClipClient(config);
-  ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
-  ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+  if (!ses.protocol.isProtocolHandled("pinix-web")) {
+    ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
+  }
+  if (!ses.protocol.isProtocolHandled("pinix-data")) {
+    ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+  }
   return client;
 }
 
