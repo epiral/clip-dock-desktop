@@ -91,11 +91,10 @@ import http from "node:http";
 
 import { URL as NodeURL } from "node:url";
 
-function getWin(alias: string | null): import("electron").BrowserWindow | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const wins = require("electron").BrowserWindow.getAllWindows() as import("electron").BrowserWindow[];
+function getWin(alias: string | null): BrowserWindow | undefined {
+  const wins = BrowserWindow.getAllWindows();
   if (!alias) return wins[0];
-  return wins.find((w: import("electron").BrowserWindow) => w.getTitle() === alias) ?? wins[0];
+  return wins.find((w) => w.getTitle() === alias) ?? wins[0];
 }
 
 // fixed: readBody — request error 事件监听 + JSON.parse 异常 catch
@@ -137,9 +136,8 @@ function startDebugServer() {
       if (!win && p !== "/windows") return fail(404, "no window");
 
       if (p === "/windows") {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const all = require("electron").BrowserWindow.getAllWindows() as import("electron").BrowserWindow[];
-        return ok(all.map((w: import("electron").BrowserWindow) => ({ id: w.id, title: w.getTitle() })));
+        const all = BrowserWindow.getAllWindows();
+        return ok(all.map((w) => ({ id: w.id, title: w.getTitle() })));
       }
 
       if (p === "/screenshot") {
