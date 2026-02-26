@@ -1,8 +1,15 @@
 // main.ts — Electron 入口
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import type { Interceptor } from "@connectrpc/connect";
 import { create } from "@bufbuild/protobuf";
 import {
   ClipService,
@@ -15,9 +22,20 @@ import { loadClip } from "./loader.js";
 registerSchemes();
 
 // RPC transport（复用 bridge 同一个 daemon）
+const TOKEN = readFileSync(
+  path.join(homedir(), ".config/pinix/secrets/super-token"),
+  "utf-8"
+).trim();
+
+const authInterceptor: Interceptor = (next) => (req) => {
+  req.header.set("Authorization", `Bearer ${TOKEN}`);
+  return next(req);
+};
+
 const transport = createConnectTransport({
-  baseUrl: "http://100.66.47.40:5005",
+  baseUrl: "http://localhost:9875",
   httpVersion: "2",
+  interceptors: [authInterceptor],
 });
 const clipClient = createClient(ClipService, transport);
 
@@ -41,13 +59,13 @@ app.whenReady().then(() => {
   // 注册 IPC handler：唯一的写操作入口
   ipcMain.handle(
     "pinix:invoke",
-    async (_event, action: string, payload: unknown) => {
-      const args =
-        Array.isArray(payload) ? payload.map(String) : payload ? [String(payload)] : [];
+    async (_event, action: string, payload: any) => {
+      const args = payload?.args ?? (Array.isArray(payload) ? payload.map(String) : payload ? [String(payload)] : []);
+      const stdin = payload?.stdin ?? "";
       const req = create(InvokeRequestSchema, {
         name: action,
-        args,
-        stdin: "",
+        args: args.map(String),
+        stdin,
       });
       const res = await clipClient.invoke(req);
       return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };

@@ -11,9 +11,25 @@ import {
 } from "./gen/pinix/v1/pinix_pb.js";
 
 // 连接 pinix daemon（Tailscale IP + gRPC 端口）
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+import type { Interceptor } from "@connectrpc/connect";
+
+const TOKEN = readFileSync(
+  path.join(homedir(), ".config/pinix/secrets/super-token"),
+  "utf-8"
+).trim();
+
+const authInterceptor: Interceptor = (next) => (req) => {
+  req.header.set("Authorization", `Bearer ${TOKEN}`);
+  return next(req);
+};
+
 const transport = createConnectTransport({
-  baseUrl: "http://100.66.47.40:5005",
+  baseUrl: "http://localhost:9875",
   httpVersion: "2",
+  interceptors: [authInterceptor],
 });
 
 const clipClient = createClient(ClipService, transport);
@@ -54,8 +70,11 @@ export function registerSchemeHandlers(): void {
 function registerScheme(scheme: string, base: string): void {
   protocol.handle(scheme, async (req) => {
     const url = new URL(req.url);
-    // url.hostname = clipId, url.pathname = /index.html
-    const filePath = `${base}${url.pathname}`;
+    // url.hostname = clipId, url.pathname = /index.html (web) or /data/xxx.md (data)
+    const relPath = url.pathname.slice(1); // strip leading /
+    const filePath = relPath.startsWith(base + "/") || relPath === base
+      ? relPath                 // pathname already includes base (pinix-data)
+      : `${base}/${relPath}`;  // prepend base (pinix-web)
     const rangeHeader = req.headers.get("Range") ?? undefined;
 
     // 首先发一个无 Range 的探测请求获取 totalSize 和 mimeType
