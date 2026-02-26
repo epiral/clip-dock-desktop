@@ -2,5 +2,6 @@
 import type { BrowserWindow } from "electron";
 
 export function loadClip(win: BrowserWindow, clipId: string): void {
-  win.loadURL(`pinix-web://${clipId}/index.html`);
+  const safeClipId = encodeURIComponent(clipId);
+  win.loadURL(`pinix-web://${safeClipId}/index.html`);
 }

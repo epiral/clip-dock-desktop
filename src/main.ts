@@ -60,15 +60,31 @@ app.whenReady().then(() => {
   ipcMain.handle(
     "pinix:invoke",
     async (_event, action: string, payload: any) => {
-      const args = payload?.args ?? (Array.isArray(payload) ? payload.map(String) : payload ? [String(payload)] : []);
-      const stdin = payload?.stdin ?? "";
-      const req = create(InvokeRequestSchema, {
-        name: action,
-        args: args.map(String),
-        stdin,
-      });
-      const res = await clipClient.invoke(req);
-      return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+      try {
+        const payloadArgs = payload?.args;
+        const payloadStdin = payload?.stdin;
+        const args = Array.isArray(payloadArgs) ? payloadArgs : [];
+        const stdin = typeof payloadStdin === "string" ? payloadStdin : "";
+
+        const invalidArgs = args.some((arg) => typeof arg !== "string");
+        const invalidPayload =
+          payloadArgs !== undefined && !Array.isArray(payloadArgs);
+
+        if (invalidArgs || invalidPayload || typeof stdin !== "string") {
+          return { stderr: "invalid payload", exitCode: 1 };
+        }
+
+        const req = create(InvokeRequestSchema, {
+          name: action,
+          args,
+          stdin,
+        });
+        const res = await clipClient.invoke(req);
+        return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return { stderr: message, exitCode: -1 };
+      }
     }
   );
 

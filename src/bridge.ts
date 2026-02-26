@@ -2,7 +2,7 @@
 // pinix-web:// 和 pinix-data:// 的 scheme handler
 
 import { protocol } from "electron";
-import { createClient } from "@connectrpc/connect";
+import { ConnectError, Code, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { create } from "@bufbuild/protobuf";
 import {
@@ -35,16 +35,45 @@ const transport = createConnectTransport({
 const clipClient = createClient(ClipService, transport);
 
 // 解析 Range header → { offset, length }
+type ParsedRange = {
+  offset: bigint;
+  length: bigint;
+  openEnded: boolean;
+};
+
 function parseRange(
-  rangeHeader: string | undefined,
-  totalSize: bigint
-): { offset: bigint; length: bigint } | null {
-  if (!rangeHeader) return null;
+  rangeHeader: string | undefined
+): { ok: true; value: ParsedRange } | { ok: false } {
+  if (!rangeHeader) return { ok: false };
   const match = rangeHeader.match(/^bytes=(\d+)-(\d*)$/);
-  if (!match) return null;
+  if (!match) return { ok: false };
   const start = BigInt(match[1]);
-  const end = match[2] ? BigInt(match[2]) : totalSize - 1n;
-  return { offset: start, length: end - start + 1n };
+  if (!match[2]) {
+    return { ok: true, value: { offset: start, length: 0n, openEnded: true } };
+  }
+  const end = BigInt(match[2]);
+  if (end < start) return { ok: false };
+  return {
+    ok: true,
+    value: { offset: start, length: end - start + 1n, openEnded: false },
+  };
+}
+
+function mapRpcError(err: unknown): Response {
+  if (err instanceof ConnectError) {
+    if (err.code === Code.NotFound) {
+      return new Response("Not Found", { status: 404 });
+    }
+    if (err.code === Code.PermissionDenied) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    if (err.code === Code.Unavailable) {
+      return new Response("Service Unavailable", { status: 503 });
+    }
+    return new Response(err.message, { status: 500 });
+  }
+  const message = err instanceof Error ? err.message : "Unknown error";
+  return new Response(message, { status: 500 });
 }
 
 // 注册自定义 scheme 为 privileged（必须在 app.ready 之前调用）
@@ -76,12 +105,14 @@ function registerScheme(scheme: string, base: string): void {
       ? relPath                 // pathname already includes base (pinix-data)
       : `${base}/${relPath}`;  // prepend base (pinix-web)
     const rangeHeader = req.headers.get("Range") ?? undefined;
-
-    // 首先发一个无 Range 的探测请求获取 totalSize 和 mimeType
-    // 或直接带 Range 请求（服务端都会返回 totalSize）
-    const range = rangeHeader
-      ? parseRange(rangeHeader, 0n) // 先解析，totalSize 后面从 chunk 获取
-      : null;
+    const parsedRange = rangeHeader ? parseRange(rangeHeader) : null;
+    if (rangeHeader && (!parsedRange || !parsedRange.ok)) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Accept-Ranges": "bytes" },
+      });
+    }
+    const range = parsedRange?.ok ? parsedRange.value : null;
 
     const readReq = create(ReadFileRequestSchema, {
       path: filePath,
@@ -89,47 +120,76 @@ function registerScheme(scheme: string, base: string): void {
       length: range?.length ?? 0n,
     });
 
-    // 收集所有 chunks
-    const chunks: Uint8Array[] = [];
-    let mimeType = "application/octet-stream";
-    let totalSize = 0n;
-    let dataOffset = 0n;
-
-    for await (const chunk of clipClient.readFile(readReq)) {
-      chunks.push(chunk.data);
-      mimeType = chunk.mimeType;
-      totalSize = chunk.totalSize;
-      if (chunks.length === 1) {
-        dataOffset = chunk.offset;
+    try {
+      const iterator = clipClient.readFile(readReq)[Symbol.asyncIterator]();
+      const first = await iterator.next();
+      if (first.done) {
+        return new Response(new Uint8Array(), {
+          status: rangeHeader ? 206 : 200,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": "0",
+            "Accept-Ranges": "bytes",
+          },
+        });
       }
+
+      const firstChunk = first.value;
+      const mimeType = firstChunk.mimeType || "application/octet-stream";
+      const totalSize = firstChunk.totalSize;
+      const dataOffset = firstChunk.offset;
+      let contentLength: bigint | null = null;
+
+      if (rangeHeader && range) {
+        if (range.openEnded) {
+          contentLength = totalSize > dataOffset ? totalSize - dataOffset : 0n;
+        } else {
+          contentLength = range.length;
+        }
+      } else {
+        contentLength = totalSize;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": mimeType,
+        "Accept-Ranges": "bytes",
+      };
+
+      if (contentLength !== null) {
+        headers["Content-Length"] = contentLength.toString();
+      }
+
+      let status = 200;
+      if (rangeHeader && range) {
+        status = 206;
+        if (totalSize > 0n && contentLength !== null) {
+          const actualEnd = dataOffset + contentLength - 1n;
+          headers["Content-Range"] =
+            `bytes ${dataOffset}-${actualEnd}/${totalSize}`;
+        }
+      }
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(firstChunk.data);
+          (async () => {
+            try {
+              for (;;) {
+                const next = await iterator.next();
+                if (next.done) break;
+                controller.enqueue(next.value.data);
+              }
+              controller.close();
+            } catch (err) {
+              controller.error(err);
+            }
+          })();
+        },
+      });
+
+      return new Response(stream, { status, headers });
+    } catch (err) {
+      return mapRpcError(err);
     }
-
-    // 合并 chunks
-    const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-    const body = new Uint8Array(totalLength);
-    let pos = 0;
-    for (const c of chunks) {
-      body.set(c, pos);
-      pos += c.byteLength;
-    }
-
-    // 构建 response headers
-    const headers: Record<string, string> = {
-      "Content-Type": mimeType,
-      "Content-Length": String(body.byteLength),
-      "Accept-Ranges": "bytes",
-    };
-
-    // 有 Range → 206 Partial Content
-    if (rangeHeader && range) {
-      // 用实际 totalSize 重新计算 end
-      const actualEnd = dataOffset + BigInt(body.byteLength) - 1n;
-      headers["Content-Range"] =
-        `bytes ${dataOffset}-${actualEnd}/${totalSize}`;
-      return new Response(body, { status: 206, headers });
-    }
-
-    // 无 Range → 200 OK
-    return new Response(body, { status: 200, headers });
   });
 }
