@@ -31,6 +31,15 @@ Electron shell for Pinix — 通过 Connect-RPC 桥接 pinix daemon。
 └─────────────────────────────────────────────┘
 ```
 
+## 目录结构
+
+| 路径 | 说明 |
+|------|------|
+| `src/` | 主进程 TypeScript 源码（main.ts、bridge.ts、loader.ts 等） |
+| `launcher/` | Launcher React UI 子项目（Vite + React） |
+| `dist/` | `pnpm build` 的编译产物（已 gitignore） |
+| `src/launcher.html` | **已废弃** — 旧版 Launcher，新版在 `launcher/` 子项目 |
+
 ## 开发
 
 ```bash
@@ -38,6 +47,8 @@ pnpm install
 pnpm generate   # proto → TypeScript
 pnpm build      # tsc 编译
 pnpm dev        # generate + build + 启动 electron
+bash dev.sh     # 开发模式（watch + 自动重启）
+bash dev-remote.sh  # 连接远端 Pinix Server 的开发模式
 ```
 
 ## 设计原则

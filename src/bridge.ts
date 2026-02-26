@@ -83,17 +83,18 @@ export function createClipClient(config: ClipConfig) {
   return createClient(ClipService, transport);
 }
 
-// 在指定 session 上注册 scheme handler，绑定到该 Clip 的 host/port/token
+// fixed: 先 unregister 旧 handler 再注册新的，避免 alias 改名后残留
 export function registerClipSchemeHandlers(
   ses: Session,
   config: ClipConfig
 ) {
   const client = createClipClient(config);
-  if (!ses.protocol.isProtocolHandled("pinix-web")) {
-    ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
-  }
-  if (!ses.protocol.isProtocolHandled("pinix-data")) {
-    ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+  for (const scheme of ["pinix-web", "pinix-data"] as const) {
+    if (ses.protocol.isProtocolHandled(scheme)) {
+      ses.protocol.unhandle(scheme);
+    }
+    const base = scheme === "pinix-web" ? "web" : "data";
+    ses.protocol.handle(scheme, createSchemeHandler(client, base));
   }
   return client;
 }
