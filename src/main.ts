@@ -71,25 +71,113 @@ function createLauncherWindow(): BrowserWindow {
 // ── Debug HTTP Server (port 9876) ──────────────────────────────
 import http from "node:http";
 
+import { URL as NodeURL } from "node:url";
+
+function getWin(alias: string | null): import("electron").BrowserWindow | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const wins = require("electron").BrowserWindow.getAllWindows() as import("electron").BrowserWindow[];
+  if (!alias) return wins[0];
+  return wins.find((w: import("electron").BrowserWindow) => w.getTitle() === alias) ?? wins[0];
+}
+
+async function readBody(req: import("http").IncomingMessage): Promise<string> {
+  return new Promise(resolve => {
+    let body = "";
+    req.on("data", (c: Buffer) => { body += c.toString(); });
+    req.on("end", () => resolve(body));
+  });
+}
+
 function startDebugServer() {
   const server = http.createServer(async (req, res) => {
-    const wins = (await import("electron")).BrowserWindow.getAllWindows();
-    if (req.url === "/screenshot") {
-      if (!wins.length) { res.writeHead(404); res.end("no window"); return; }
-      const img = await wins[0].webContents.capturePage();
-      res.writeHead(200, { "Content-Type": "image/png" });
-      res.end(img.toPNG());
-    } else if (req.url === "/windows") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(wins.map(w => ({ id: w.id, title: w.getTitle() }))));
-    } else if (req.url === "/dom") {
-      if (!wins.length) { res.writeHead(404); res.end("no window"); return; }
-      const html = await wins[0].webContents.executeJavaScript("document.documentElement.outerHTML");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
-    } else {
-      res.writeHead(404); res.end();
+    const parsed = new NodeURL(req.url ?? "/", "http://localhost:9876");
+    const p = parsed.pathname;
+    const alias = parsed.searchParams.get("alias");
+    const win = getWin(alias);
+
+    const ok = (data: unknown, ct = "application/json") => {
+      const body = typeof data === "string" ? data : JSON.stringify(data);
+      res.writeHead(200, { "Content-Type": ct, "Access-Control-Allow-Origin": "*" });
+      res.end(body);
+    };
+    const fail = (code: number, msg: string) => { res.writeHead(code); res.end(msg); };
+
+    if (!win && p !== "/windows") return fail(404, "no window");
+
+    if (p === "/windows") {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const all = require("electron").BrowserWindow.getAllWindows() as import("electron").BrowserWindow[];
+      return ok(all.map((w: import("electron").BrowserWindow) => ({ id: w.id, title: w.getTitle() })));
     }
+
+    if (p === "/screenshot") {
+      const img = await win!.webContents.capturePage();
+      res.writeHead(200, { "Content-Type": "image/png" });
+      return res.end(img.toPNG());
+    }
+
+    if (p === "/dom") {
+      const html = await win!.webContents.executeJavaScript("document.documentElement.outerHTML");
+      return ok(html, "text/html");
+    }
+
+    if (p === "/snapshot") {
+      const tree = await win!.webContents.executeJavaScript(`(function(){
+        let idx=0;
+        function walk(el){
+          const tag=el.tagName?el.tagName.toLowerCase():"";
+          const role=el.getAttribute?el.getAttribute("role"):"";
+          const text=(el.innerText||el.textContent||"").trim().slice(0,80);
+          const interactive=["a","button","input","select","textarea"].includes(tag)||!!role;
+          const node={ref:String(idx++),tag,role:role||tag,text,interactive};
+          const children=Array.from(el.children||[]).map(walk);
+          return children.length?Object.assign(node,{children}):node;
+        }
+        return JSON.stringify(walk(document.body));
+      })()`);
+      return ok(JSON.parse(tree));
+    }
+
+    if (p === "/eval") {
+      const body = await readBody(req);
+      const { script } = JSON.parse(body || "{}");
+      if (!script) return fail(400, "missing script");
+      try {
+        const result = await win!.webContents.executeJavaScript(script);
+        return ok({ result });
+      } catch (e: unknown) { return ok({ error: String(e) }); }
+    }
+
+    if (p === "/click") {
+      const body = await readBody(req);
+      const { selector } = JSON.parse(body || "{}");
+      if (!selector) return fail(400, "missing selector");
+      const result = await win!.webContents.executeJavaScript(
+        `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.click();return "ok";}return "not found";})()`
+      );
+      return ok({ result });
+    }
+
+    if (p === "/fill") {
+      const body = await readBody(req);
+      const { selector, value } = JSON.parse(body || "{}");
+      if (!selector || value == null) return fail(400, "missing selector or value");
+      const result = await win!.webContents.executeJavaScript(
+        `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return "not found";el.focus();el.value=${JSON.stringify(value)};el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));return "ok";})()`
+      );
+      return ok({ result });
+    }
+
+    if (p === "/scroll") {
+      const body = await readBody(req);
+      const { direction = "down", amount = 300 } = JSON.parse(body || "{}");
+      const dy = direction === "up" ? -amount : direction === "down" ? amount : 0;
+      const dx = direction === "left" ? -amount : direction === "right" ? amount : 0;
+      await win!.webContents.executeJavaScript(`window.scrollBy(${dx},${dy})`);
+      return ok({ result: "ok" });
+    }
+
+    fail(404, "unknown endpoint");
   });
   server.listen(9876, "127.0.0.1", () => console.log("[debug] http://localhost:9876"));
 }

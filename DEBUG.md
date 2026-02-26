@@ -2,27 +2,49 @@
 
 ## 调试 HTTP Server
 
-Electron 启动后，自动在 `http://localhost:9876` 开放调试接口。
+Electron 启动后，自动在 `http://127.0.0.1:9876` 开放调试接口。所有接口支持 `?alias=<窗口标题>` 参数定向到具体窗口（不传则取第一个窗口）。
 
 ### 接口清单
 
 | 路径 | 方法 | 说明 |
 |------|------|------|
 | `/windows` | GET | 列出所有 BrowserWindow（id + title） |
-| `/screenshot` | GET | 截取第一个窗口的当前截图（PNG） |
-| `/dom` | GET | 获取第一个窗口的 document.documentElement.outerHTML |
+| `/screenshot` | GET | 截取窗口截图（PNG） |
+| `/dom` | GET | 获取完整 HTML |
+| `/snapshot` | GET | 获取可交互元素树（含 ref） |
+| `/eval` | POST | 执行任意 JS，返回结果 |
+| `/click` | POST | 点击指定 CSS selector 的元素 |
+| `/fill` | POST | 填写输入框 |
+| `/scroll` | POST | 滚动页面 |
 
 ### 常用命令
 
 ```bash
-# 查看所有窗口
-curl http://localhost:9876/windows
+# 列出所有窗口
+curl http://127.0.0.1:9876/windows
 
-# 截图保存
-curl -s http://localhost:9876/screenshot -o /tmp/snapshot.png
+# 读页面结构（找 ref / selector）
+curl "http://127.0.0.1:9876/snapshot?alias=Notes"
 
-# 查看 DOM 内容
-curl -s http://localhost:9876/dom | head -100
+# 截图 → gemini 看效果
+curl -s "http://127.0.0.1:9876/screenshot?alias=Notes" -o /tmp/shot.png \
+  && gemini-vision /tmp/shot.png "描述界面效果"
+
+# 执行任意 JS
+curl -s -X POST "http://127.0.0.1:9876/eval?alias=Notes" \
+  -d '{"script":"document.title"}'
+
+# 点击元素（CSS selector）
+curl -s -X POST "http://127.0.0.1:9876/click?alias=Notes" \
+  -d '{"selector":"button.btn-save"}'
+
+# 填写输入框
+curl -s -X POST "http://127.0.0.1:9876/fill?alias=Notes" \
+  -d '{"selector":"#title","value":"hello"}'
+
+# 滚动（direction: up/down/left/right，amount 默认 300px）
+curl -s -X POST "http://127.0.0.1:9876/scroll?alias=Notes" \
+  -d '{"direction":"down"}'
 ```
 
 ## 启动应用
@@ -35,7 +57,7 @@ npx electron .
 
 # 开发模式（Launcher UI 热重载）
 cd launcher && pnpm dev --port 5174
-# 然后另开终端：cd .. && npx electron .
+# 另开终端：cd .. && npx electron .
 ```
 
 ## 构建
@@ -53,7 +75,7 @@ cd .. && pnpm build
 ```
 pinix-desktop/
 ├── src/              # Electron 主进程（TypeScript）
-│   ├── main.ts       # 入口：Launcher 窗口、Clip 窗口、IPC 处理、调试 Server
+│   ├── main.ts       # 入口：Launcher/Clip 窗口、IPC、调试 Server (9876)
 │   ├── bridge.ts     # pinix-web/pinix-data Scheme Handler + Connect-RPC 客户端
 │   ├── loader.ts     # Clip 页面加载逻辑
 │   ├── preload.ts    # Clip 窗口 preload（注入 window.Bridge）
