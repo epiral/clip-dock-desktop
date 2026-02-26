@@ -1,0 +1,30 @@
+{
+  "name": "pinix-desktop",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/main.js",
+  "scripts": {
+    "generate": "buf generate",
+    "build": "tsc",
+    "dev": "pnpm generate && pnpm build && electron dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.0",
+  "devDependencies": {
+    "@bufbuild/protoc-gen-es": "^2.11.0",
+    "electron": "^40.6.1",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.11.0",
+    "@connectrpc/connect": "^2.1.1",
+    "@connectrpc/connect-node": "^2.1.1"
+  }
+}
