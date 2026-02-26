@@ -41,8 +41,8 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
   const client = registerClipSchemeHandlers(ses, config);
 
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: config.windowState?.width ?? 1200,
+    height: config.windowState?.height ?? 800,
     title: config.alias,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -57,6 +57,16 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
 
   // fixed: BrowserWindow 清理 — 删 registry + 清 webContents listeners + 清独立 session cache
   win.on("closed", () => {
+    // persist windowState back to clips.json
+    try {
+      const bounds = win.getBounds();
+      const clips = readClips();
+      const idx = clips.findIndex(c => c.alias === config.alias);
+      if (idx !== -1) {
+        clips[idx].windowState = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+        writeClips(clips);
+      }
+    } catch {}
     clipRegistry.delete(id);
     win.webContents.removeAllListeners();
     ses.clearCache().catch(() => {});
@@ -137,7 +147,7 @@ function startDebugServer() {
 
       if (p === "/windows") {
         const all = BrowserWindow.getAllWindows();
-        return ok(all.map((w) => ({ id: w.id, title: w.getTitle() })));
+        return ok(all.map((w) => ({ id: w.id, title: w.getTitle(), bounds: w.getBounds() })));
       }
 
       if (p === "/screenshot") {
@@ -221,7 +231,32 @@ function startDebugServer() {
         return ok({ result: "ok" });
       }
 
-      fail(404, "unknown endpoint");
+      if (p === "/resize") {
+        let raw: string;
+        try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
+        const parsed = safeJsonParse(raw);
+        if (!parsed.ok) return fail(400, parsed.error);
+        const PRESETS: Record<string, { width: number; height: number }> = {
+          "iphone15": { width: 393,  height: 852  },
+          "ipad":     { width: 820,  height: 1180 },
+          "desktop":  { width: 1280, height: 800  },
+        };
+        let width: number;
+        let height: number;
+        const preset = parsed.value.preset;
+        if (typeof preset === "string" && PRESETS[preset]) {
+          ({ width, height } = PRESETS[preset]);
+        } else {
+          width  = typeof parsed.value.width  === "number" ? parsed.value.width  : 0;
+          height = typeof parsed.value.height === "number" ? parsed.value.height : 0;
+          if (!width || !height) return fail(400, "missing width/height or unknown preset");
+        }
+        win!.setSize(width, height, false);
+        const bounds = win!.getBounds();
+        return ok({ ok: true, bounds });
+      }
+
+            fail(404, "unknown endpoint");
     } catch (err) {
       // fixed: 顶层 catch — 所有未预期异常返回 500
       const msg = err instanceof Error ? err.message : "internal server error";
