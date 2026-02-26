@@ -63,8 +63,35 @@ function createLauncherWindow(): BrowserWindow {
       nodeIntegration: false,
     },
   });
-  win.loadFile(path.join(__dirname, "../src/launcher.html"));
+  win.loadFile(path.join(__dirname, "../launcher/dist/index.html"));
   return win;
+}
+
+
+// ── Debug HTTP Server (port 9876) ──────────────────────────────
+import http from "node:http";
+
+function startDebugServer() {
+  const server = http.createServer(async (req, res) => {
+    const wins = (await import("electron")).BrowserWindow.getAllWindows();
+    if (req.url === "/screenshot") {
+      if (!wins.length) { res.writeHead(404); res.end("no window"); return; }
+      const img = await wins[0].webContents.capturePage();
+      res.writeHead(200, { "Content-Type": "image/png" });
+      res.end(img.toPNG());
+    } else if (req.url === "/windows") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(wins.map(w => ({ id: w.id, title: w.getTitle() }))));
+    } else if (req.url === "/dom") {
+      if (!wins.length) { res.writeHead(404); res.end("no window"); return; }
+      const html = await wins[0].webContents.executeJavaScript("document.documentElement.outerHTML");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
+    } else {
+      res.writeHead(404); res.end();
+    }
+  });
+  server.listen(9876, "127.0.0.1", () => console.log("[debug] http://localhost:9876"));
 }
 
 app.whenReady().then(() => {
@@ -118,6 +145,7 @@ app.whenReady().then(() => {
 
   // 启动 Launcher
   createLauncherWindow();
+  startDebugServer();
 });
 
 app.on("window-all-closed", () => {

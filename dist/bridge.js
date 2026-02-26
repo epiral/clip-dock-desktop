@@ -68,8 +68,12 @@ export function createClipClient(config) {
 // 在指定 session 上注册 scheme handler，绑定到该 Clip 的 host/port/token
 export function registerClipSchemeHandlers(ses, config) {
     const client = createClipClient(config);
-    ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
-    ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+    if (!ses.protocol.isProtocolHandled("pinix-web")) {
+        ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
+    }
+    if (!ses.protocol.isProtocolHandled("pinix-data")) {
+        ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+    }
     return client;
 }
 // 创建 scheme handler（参数化 client 和 base 路径）
