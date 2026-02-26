@@ -2,6 +2,7 @@
 // pinix-web:// 和 pinix-data:// 的 scheme handler
 
 import { protocol } from "electron";
+import type { Session } from "electron";
 import { ConnectError, Code, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { create } from "@bufbuild/protobuf";
@@ -9,30 +10,8 @@ import {
   ClipService,
   ReadFileRequestSchema,
 } from "./gen/pinix/v1/pinix_pb.js";
-
-// 连接 pinix daemon（Tailscale IP + gRPC 端口）
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 import type { Interceptor } from "@connectrpc/connect";
-
-const TOKEN = readFileSync(
-  path.join(homedir(), ".config/pinix/secrets/super-token"),
-  "utf-8"
-).trim();
-
-const authInterceptor: Interceptor = (next) => (req) => {
-  req.header.set("Authorization", `Bearer ${TOKEN}`);
-  return next(req);
-};
-
-const transport = createConnectTransport({
-  baseUrl: process.env.PINIX_SERVER_URL ?? "http://localhost:9875",
-  httpVersion: "2",
-  interceptors: [authInterceptor],
-});
-
-const clipClient = createClient(ClipService, transport);
+import type { ClipConfig } from "./types.js";
 
 // 解析 Range header → { offset, length }
 type ParsedRange = {
@@ -90,20 +69,44 @@ export function registerSchemes(): void {
   ]);
 }
 
-// 注册 scheme handler，将请求转发到 ReadFile RPC
-export function registerSchemeHandlers(): void {
-  registerScheme("pinix-web", "web");
-  registerScheme("pinix-data", "data");
+// 为指定 ClipConfig 创建 RPC 客户端
+export function createClipClient(config: ClipConfig) {
+  const authInterceptor: Interceptor = (next) => (req) => {
+    req.header.set("Authorization", `Bearer ${config.token}`);
+    return next(req);
+  };
+  const transport = createConnectTransport({
+    baseUrl: `http://${config.host}:${config.port}`,
+    httpVersion: "2",
+    interceptors: [authInterceptor],
+  });
+  return createClient(ClipService, transport);
 }
 
-function registerScheme(scheme: string, base: string): void {
-  protocol.handle(scheme, async (req) => {
+// 在指定 session 上注册 scheme handler，绑定到该 Clip 的 host/port/token
+export function registerClipSchemeHandlers(
+  ses: Session,
+  config: ClipConfig
+) {
+  const client = createClipClient(config);
+  ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
+  ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+  return client;
+}
+
+// 创建 scheme handler（参数化 client 和 base 路径）
+function createSchemeHandler(
+  clipClient: ReturnType<typeof createClipClient>,
+  base: string
+) {
+  return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
-    // url.hostname = clipId, url.pathname = /index.html (web) or /data/xxx.md (data)
+    // url.hostname = alias, url.pathname = /index.html (web) or /data/xxx.md (data)
     const relPath = url.pathname.slice(1); // strip leading /
-    const filePath = relPath.startsWith(base + "/") || relPath === base
-      ? relPath                 // pathname already includes base (pinix-data)
-      : `${base}/${relPath}`;  // prepend base (pinix-web)
+    const filePath =
+      relPath.startsWith(base + "/") || relPath === base
+        ? relPath // pathname already includes base (pinix-data)
+        : `${base}/${relPath}`; // prepend base (pinix-web)
     const rangeHeader = req.headers.get("Range") ?? undefined;
     const parsedRange = rangeHeader ? parseRange(rangeHeader) : null;
     if (rangeHeader && (!parsedRange || !parsedRange.ok)) {
@@ -191,5 +194,5 @@ function registerScheme(scheme: string, base: string): void {
     } catch (err) {
       return mapRpcError(err);
     }
-  });
+  };
 }

@@ -1,4 +1,4 @@
-export function loadClip(win, clipId) {
-    const safeClipId = encodeURIComponent(clipId);
-    win.loadURL(`pinix-web://${safeClipId}/index.html`);
+export function loadClip(win, config) {
+    const safeAlias = encodeURIComponent(config.alias);
+    win.loadURL(`pinix-web://${safeAlias}/index.html`);
 }

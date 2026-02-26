@@ -5,21 +5,6 @@ import { ConnectError, Code, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { create } from "@bufbuild/protobuf";
 import { ClipService, ReadFileRequestSchema, } from "./gen/pinix/v1/pinix_pb.js";
-// 连接 pinix daemon（Tailscale IP + gRPC 端口）
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
-const TOKEN = readFileSync(path.join(homedir(), ".config/pinix/secrets/super-token"), "utf-8").trim();
-const authInterceptor = (next) => (req) => {
-    req.header.set("Authorization", `Bearer ${TOKEN}`);
-    return next(req);
-};
-const transport = createConnectTransport({
-    baseUrl: "http://localhost:9875",
-    httpVersion: "2",
-    interceptors: [authInterceptor],
-});
-const clipClient = createClient(ClipService, transport);
 function parseRange(rangeHeader) {
     if (!rangeHeader)
         return { ok: false };
@@ -67,15 +52,31 @@ export function registerSchemes() {
         { scheme: "pinix-data", privileges: opts },
     ]);
 }
-// 注册 scheme handler，将请求转发到 ReadFile RPC
-export function registerSchemeHandlers() {
-    registerScheme("pinix-web", "web");
-    registerScheme("pinix-data", "data");
+// 为指定 ClipConfig 创建 RPC 客户端
+export function createClipClient(config) {
+    const authInterceptor = (next) => (req) => {
+        req.header.set("Authorization", `Bearer ${config.token}`);
+        return next(req);
+    };
+    const transport = createConnectTransport({
+        baseUrl: `http://${config.host}:${config.port}`,
+        httpVersion: "2",
+        interceptors: [authInterceptor],
+    });
+    return createClient(ClipService, transport);
 }
-function registerScheme(scheme, base) {
-    protocol.handle(scheme, async (req) => {
+// 在指定 session 上注册 scheme handler，绑定到该 Clip 的 host/port/token
+export function registerClipSchemeHandlers(ses, config) {
+    const client = createClipClient(config);
+    ses.protocol.handle("pinix-web", createSchemeHandler(client, "web"));
+    ses.protocol.handle("pinix-data", createSchemeHandler(client, "data"));
+    return client;
+}
+// 创建 scheme handler（参数化 client 和 base 路径）
+function createSchemeHandler(clipClient, base) {
+    return async (req) => {
         const url = new URL(req.url);
-        // url.hostname = clipId, url.pathname = /index.html (web) or /data/xxx.md (data)
+        // url.hostname = alias, url.pathname = /index.html (web) or /data/xxx.md (data)
         const relPath = url.pathname.slice(1); // strip leading /
         const filePath = relPath.startsWith(base + "/") || relPath === base
             ? relPath // pathname already includes base (pinix-data)
@@ -163,5 +164,5 @@ function registerScheme(scheme, base) {
         catch (err) {
             return mapRpcError(err);
         }
-    });
+    };
 }
