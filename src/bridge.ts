@@ -27,7 +27,7 @@ const authInterceptor: Interceptor = (next) => (req) => {
 };
 
 const transport = createConnectTransport({
-  baseUrl: "http://localhost:9875",
+  baseUrl: process.env.PINIX_SERVER_URL ?? "http://localhost:9875",
   httpVersion: "2",
   interceptors: [authInterceptor],
 });
