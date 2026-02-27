@@ -275,6 +275,24 @@ function startDebugServer() {
         return ok({ ok: true, bounds });
       }
 
+      if (req.method === "POST" && p === "/close") {
+        let raw: string;
+        try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
+        const parsed = safeJsonParse(raw);
+        if (!parsed.ok) return fail(400, parsed.error);
+
+        let targetWin: BrowserWindow | undefined;
+        if (typeof parsed.value.alias === "string" && parsed.value.alias) {
+          targetWin = BrowserWindow.getAllWindows().find(w => w.getTitle() === parsed.value.alias);
+        } else if (typeof parsed.value.windowId === "number") {
+          targetWin = BrowserWindow.fromId(parsed.value.windowId) ?? undefined;
+        }
+        if (!targetWin) return fail(404, "window not found");
+
+        targetWin.close(); // 触发主进程 win.on("close") → 持久化 windowState
+        return ok({ ok: true });
+      }
+
             fail(404, "unknown endpoint");
     } catch (err) {
       // fixed: 顶层 catch — 所有未预期异常返回 500
