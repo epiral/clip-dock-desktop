@@ -8,3 +8,43 @@ const Bridge = Object.freeze({
 });
 
 contextBridge.exposeInMainWorld("Bridge", Bridge);
+
+// AgentBridge — Clip 数据操作接口
+// readFile 通过 pinix-data:// scheme handler 获取（走 ReadFile RPC streaming）
+// 写操作通过 pinix:invoke IPC 走 ClipService.Invoke RPC
+const AgentBridge = Object.freeze({
+  readFile: async (path: string): Promise<string> => {
+    const res = await fetch(`pinix-data://local/data/${path}`);
+    if (!res.ok) throw new Error(`readFile failed (${res.status}): ${path}`);
+    return await res.text();
+  },
+  writeFile: async (path: string, content: string): Promise<void> => {
+    const r = await ipcRenderer.invoke("pinix:invoke", "writeFile", {
+      args: [path],
+      stdin: content,
+    });
+    if (r.exitCode !== 0) throw new Error(r.stderr || "writeFile failed");
+  },
+  writeBinaryFile: async (path: string, base64: string): Promise<void> => {
+    const r = await ipcRenderer.invoke("pinix:invoke", "writeBinaryFile", {
+      args: [path],
+      stdin: base64,
+    });
+    if (r.exitCode !== 0) throw new Error(r.stderr || "writeBinaryFile failed");
+  },
+  listFiles: async (path: string): Promise<string[]> => {
+    const r = await ipcRenderer.invoke("pinix:invoke", "listFiles", {
+      args: [path],
+    });
+    if (r.exitCode !== 0) throw new Error(r.stderr || "listFiles failed");
+    return r.stdout ? r.stdout.split("\n").filter(Boolean) : [];
+  },
+  deleteFile: async (path: string): Promise<void> => {
+    const r = await ipcRenderer.invoke("pinix:invoke", "deleteFile", {
+      args: [path],
+    });
+    if (r.exitCode !== 0) throw new Error(r.stderr || "deleteFile failed");
+  },
+});
+
+contextBridge.exposeInMainWorld("AgentBridge", AgentBridge);

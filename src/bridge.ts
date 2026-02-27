@@ -179,19 +179,21 @@ function createSchemeHandler(
 
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
+          // 第一个 chunk 已获取，直接入队
           controller.enqueue(firstChunk.data);
-          (async () => {
-            try {
-              for (;;) {
-                const next = await iterator.next();
-                if (next.done) break;
-                controller.enqueue(next.value.data);
-              }
+        },
+        async pull(controller) {
+          // 消费者驱动：Electron 每次队列快空时调用
+          try {
+            const next = await iterator.next();
+            if (next.done) {
               controller.close();
-            } catch (err) {
-              controller.error(err);
+            } else {
+              controller.enqueue(next.value.data);
             }
-          })();
+          } catch (err) {
+            controller.error(err);
+          }
         },
       });
 
