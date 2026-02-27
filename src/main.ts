@@ -311,7 +311,10 @@ app.whenReady().then(() => {
   ipcMain.handle("launcher:open-clip", (_event, config: unknown) => {
     if (!isClipConfig(config)) throw new Error("invalid ClipConfig");
     try {
-      openClipWindow(config);
+      // 从磁盘读取最新 windowState，合并进 config（Launcher 持有的是启动时快照）
+      const saved = readClips().find(c => c.alias === config.alias);
+      const merged: ClipConfig = saved ? { ...config, windowState: saved.windowState } : config;
+      openClipWindow(merged);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "failed to open clip";
       throw new Error(msg);
