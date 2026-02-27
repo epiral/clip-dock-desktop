@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const Bridge = Object.freeze({
   invoke: (action: string, payload: unknown) =>
     ipcRenderer.invoke("pinix:invoke", action, payload),
+  clearCache: () => ipcRenderer.invoke("pinix:clear-cache"),
 });
 
 contextBridge.exposeInMainWorld("Bridge", Bridge);

@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 import { create } from "@bufbuild/protobuf";
 import { InvokeRequestSchema } from "./gen/pinix/v1/pinix_pb.js";
-import { registerSchemes, registerClipSchemeHandlers, createClipClient } from "./bridge.js";
+import { registerSchemes, registerClipSchemeHandlers, createClipClient, clearClipCache } from "./bridge.js";
 import { loadClip } from "./loader.js";
 import { readClips, writeClips } from "./clipsStore.js";
 import type { ClipConfig } from "./types.js";
@@ -37,8 +37,9 @@ const clipRegistry = new Map<number, ClipEntry>();
 
 // 为指定 ClipConfig 创建独立窗口
 function openClipWindow(config: ClipConfig): BrowserWindow {
+  const cacheDir = path.join(app.getPath("userData"), "clips");
   const ses = session.fromPartition(`clip-${config.alias}`);
-  const client = registerClipSchemeHandlers(ses, config);
+  const client = registerClipSchemeHandlers(ses, config, cacheDir);
 
   const ws = config.windowState;
   const win = new BrowserWindow({
@@ -78,6 +79,20 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
     clipRegistry.delete(id);
     win.webContents.removeAllListeners();
     ses.clearCache().catch(() => {});
+  });
+
+  // Cmd+R / Ctrl+R → 清缓存并重载 Clip
+  win.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.type === "keyDown" &&
+      (input.meta || input.control) &&
+      input.key.toLowerCase() === "r" &&
+      !input.shift
+    ) {
+      event.preventDefault();
+      clearClipCache(config.alias, cacheDir);
+      win.webContents.reload();
+    }
   });
 
   // fixed: loadClip 加 catch — 超时/失败时窗口已显示错误 HTML
@@ -334,6 +349,23 @@ app.whenReady().then(() => {
       throw new Error("invalid clips array");
     }
     writeClips(clips);
+  });
+
+  // 清缓存 + 重载 IPC — 参数 alias 可选，缺省从 sender 推断
+  ipcMain.handle("pinix:clear-cache", (event, alias?: string) => {
+    const cacheDir = path.join(app.getPath("userData"), "clips");
+    const resolvedAlias =
+      alias ?? clipRegistry.get(event.sender.id)?.config.alias;
+    if (!resolvedAlias) throw new Error("unknown clip");
+    clearClipCache(resolvedAlias, cacheDir);
+    for (const [wcId, entry] of clipRegistry) {
+      if (entry.config.alias === resolvedAlias) {
+        const win = BrowserWindow.getAllWindows().find(
+          (w) => w.webContents.id === wcId
+        );
+        if (win && !win.isDestroyed()) win.webContents.reload();
+      }
+    }
   });
 
   // Clip 写操作 IPC — 通过 sender.id 查找对应 Clip
