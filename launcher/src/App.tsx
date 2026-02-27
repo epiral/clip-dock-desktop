@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, RefreshCw } from "lucide-react";
 import "@fontsource/playfair-display/400.css";
 import "@fontsource/playfair-display/700.css";
 import "@fontsource/inter/400.css";
@@ -18,6 +18,7 @@ function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(-1);
   const [form, setForm] = useState({ alias: "", host: "", port: "", token: "" });
+  const [clearedAlias, setClearedAlias] = useState<string | null>(null);
 
   useEffect(() => {
     if (window.LauncherBridge) {
@@ -69,6 +70,14 @@ function App() {
     const next = clips.filter((_, i) => i !== index);
     if (window.LauncherBridge) await window.LauncherBridge.saveClips(next);
     setClips(next);
+  }
+
+  async function handleClearCache(alias: string) {
+    if (window.LauncherBridge?.clearCache) {
+      await window.LauncherBridge.clearCache(alias);
+    }
+    setClearedAlias(alias);
+    setTimeout(() => setClearedAlias(null), 1500);
   }
 
   async function handleOpen(index: number) {
@@ -124,6 +133,17 @@ function App() {
                     </div>
                   </div>
                   <div className="ml-4 flex shrink-0 gap-2 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleClearCache(clip.alias); }}
+                      title="Clear cache"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {clearedAlias === clip.alias ? (
+                        <span className="text-xs text-green-500">✓</span>
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                    </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); openEdit(i); }}
                       title="编辑"

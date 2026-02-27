@@ -34,6 +34,12 @@ const LauncherBridge = Object.freeze({
     }
     return _electron.ipcRenderer.invoke("launcher:save-clips", clips);
   },
+  clearCache: (alias: string) => {
+    if (typeof alias !== "string" || alias.length === 0) {
+      return Promise.reject(new Error("invalid alias"));
+    }
+    return _electron.ipcRenderer.invoke("pinix:clear-cache", alias);
+  },
 });
 
 _electron.contextBridge.exposeInMainWorld("LauncherBridge", LauncherBridge);
