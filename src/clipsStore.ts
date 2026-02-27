@@ -1,5 +1,5 @@
 // clipsStore.ts — clips.json 读写
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { ClipConfig } from "./types.js";
@@ -11,7 +11,10 @@ export function readClips(): ClipConfig[] {
     const data = readFileSync(CLIPS_PATH, "utf-8");
     const parsed = JSON.parse(data);
     return Array.isArray(parsed.clips) ? parsed.clips : [];
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("[readClips] failed:", err);
+    }
     return [];
   }
 }
@@ -19,5 +22,7 @@ export function readClips(): ClipConfig[] {
 export function writeClips(clips: ClipConfig[]): void {
   const dir = path.dirname(CLIPS_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(CLIPS_PATH, JSON.stringify({ clips }, null, 2), "utf-8");
+  const tmp = CLIPS_PATH + ".tmp";
+  writeFileSync(tmp, JSON.stringify({ clips }, null, 2), "utf-8");
+  renameSync(tmp, CLIPS_PATH);
 }

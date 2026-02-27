@@ -60,6 +60,7 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
   // persist windowState before native window is destroyed
   win.on("close", () => {
     try {
+      if (win.isDestroyed()) return;
       const bounds = win.getBounds();
       const clips = readClips();
       const idx = clips.findIndex(c => c.alias === config.alias);
@@ -289,8 +290,14 @@ function startDebugServer() {
         }
         if (!targetWin) return fail(404, "window not found");
 
-        targetWin.close(); // 触发主进程 win.on("close") → 持久化 windowState
-        return ok({ ok: true });
+        const force = parsed.value.force === true;
+        if (force) {
+          targetWin.destroy();
+          return ok({ ok: true, destroyed: true });
+        } else {
+          targetWin.close();
+          return ok({ ok: true, destroyed: false });
+        }
       }
 
             fail(404, "unknown endpoint");
