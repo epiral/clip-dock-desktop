@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Pencil, Trash2 } from "lucide-react";
+import "@fontsource/playfair-display/400.css";
+import "@fontsource/playfair-display/700.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+
 import {
   Dialog,
   DialogContent,
@@ -8,8 +12,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 function App() {
   const [clips, setClips] = useState<ClipConfig[]>([]);
@@ -21,8 +23,10 @@ function App() {
     if (window.LauncherBridge) {
       window.LauncherBridge.getClips().then(setClips);
     } else {
-      // Dev mode mock
-      setClips([{ alias: 'Notes', host: '100.66.47.40', port: 9875, token: 'demo' }]);
+      setClips([
+        { alias: "Notes", host: "100.66.47.40", port: 9875, token: "demo" },
+        { alias: "Voice Inbox", host: "100.66.47.40", port: 9876, token: "demo" },
+      ]);
     }
   }, []);
 
@@ -72,69 +76,69 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] p-8 font-[system-ui,'-apple-system','Segoe_UI',Roboto,sans-serif]">
+    <div className="min-h-screen bg-background px-8 pt-10 pb-8 font-sans">
       <div className="mx-auto max-w-lg">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight text-[#1d1d1f]">
-            Pinix Clips
-          </h1>
-          <Button
-            onClick={openAdd}
-            className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
-            size="sm"
-          >
-            <Plus className="size-4" />
-            添加 Clip
-          </Button>
-        </div>
+        {/* Header */}
+        <header className="mb-8">
+          <div className="flex items-baseline justify-between">
+            <h1
+              className="text-[2rem] font-bold tracking-tight text-foreground leading-none"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            >
+              Pinix
+            </h1>
+            <button
+              onClick={openAdd}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
+            >
+              + New Clip
+            </button>
+          </div>
+          <div className="mt-3 h-[2px] bg-foreground" />
+          <div className="mt-[2px] h-px bg-foreground" />
+        </header>
 
+        {/* Clip List */}
         {clips.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
-            没有 Clip，点击上方按钮添加
+          <div className="py-16 text-center text-sm text-muted-foreground italic">
+            No clips yet
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div>
             {clips.map((clip, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between rounded-lg border border-[#e5e5e5] bg-white px-5 py-4 transition-shadow hover:shadow-sm"
+                className="group cursor-pointer border-b border-border py-3 first:pt-0 transition-colors hover:bg-accent/50"
+                onClick={() => handleOpen(i)}
               >
-                <div className="min-w-0">
-                  <div className="truncate text-[15px] font-medium text-[#1d1d1f]">
-                    {clip.alias}
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="text-lg font-normal text-foreground leading-snug"
+                      style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+                    >
+                      {clip.alias}
+                    </div>
+                    <div className="mt-0.5 font-mono text-[11px] tracking-wider text-muted-foreground">
+                      {clip.host}:{clip.port}
+                    </div>
                   </div>
-                  <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                    {clip.host}:{clip.port}
+                  <div className="ml-4 flex shrink-0 gap-2 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEdit(i); }}
+                      title="编辑"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(i); }}
+                      title="删除"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
                   </div>
-                </div>
-                <div className="ml-4 flex shrink-0 gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => handleOpen(i)}
-                    title="打开"
-                    className="text-[#0066FF] hover:bg-[#0066FF]/10"
-                  >
-                    <ExternalLink />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => openEdit(i)}
-                    title="编辑"
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => handleDelete(i)}
-                    title="删除"
-                    className="text-[#FF3B30] hover:bg-[#FF3B30]/10"
-                  >
-                    <Trash2 />
-                  </Button>
                 </div>
               </div>
             ))}
@@ -142,66 +146,82 @@ function App() {
         )}
       </div>
 
+      {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-sm border-border bg-background shadow-none">
           <DialogHeader>
-            <DialogTitle>
-              {editIndex >= 0 ? "编辑 Clip" : "添加 Clip"}
+            <DialogTitle
+              className="text-xl font-normal"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            >
+              {editIndex >= 0 ? "Edit Clip" : "New Clip"}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label htmlFor="alias">别名 (Alias)</Label>
-              <Input
+          <div className="grid gap-5 py-2">
+            <div className="grid gap-1.5">
+              <label htmlFor="alias" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Alias
+              </label>
+              <input
                 id="alias"
                 placeholder="Notes"
                 value={form.alias}
                 onChange={(e) => setForm({ ...form, alias: e.target.value })}
+                className="h-9 w-full border-0 border-b border-border bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="host">主机 (Host)</Label>
-              <Input
+            <div className="grid gap-1.5">
+              <label htmlFor="host" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Host
+              </label>
+              <input
                 id="host"
                 placeholder="100.66.47.40"
                 value={form.host}
                 onChange={(e) => setForm({ ...form, host: e.target.value })}
+                className="h-9 w-full border-0 border-b border-border bg-transparent px-0 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="port">端口 (Port)</Label>
-              <Input
+            <div className="grid gap-1.5">
+              <label htmlFor="port" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Port
+              </label>
+              <input
                 id="port"
                 type="number"
                 placeholder="9875"
                 value={form.port}
                 onChange={(e) => setForm({ ...form, port: e.target.value })}
+                className="h-9 w-full border-0 border-b border-border bg-transparent px-0 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="token">Token</Label>
-              <Input
+            <div className="grid gap-1.5">
+              <label htmlFor="token" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Token
+              </label>
+              <input
                 id="token"
                 type="password"
                 placeholder="鉴权 token"
                 value={form.token}
                 onChange={(e) => setForm({ ...form, token: e.target.value })}
+                className="h-9 w-full border-0 border-b border-border bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
+          <DialogFooter className="gap-4 sm:gap-4">
+            <button
               onClick={() => setDialogOpen(false)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border"
             >
-              取消
-            </Button>
-            <Button
+              Cancel
+            </button>
+            <button
               onClick={handleSave}
-              className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
+              className="text-sm font-medium text-foreground hover:text-muted-foreground transition-colors underline underline-offset-4"
             >
-              保存
-            </Button>
+              Save
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
