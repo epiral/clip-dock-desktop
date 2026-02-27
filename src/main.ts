@@ -243,6 +243,18 @@ function startDebugServer() {
         try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
         const parsed = safeJsonParse(raw);
         if (!parsed.ok) return fail(400, parsed.error);
+
+        // 优先用 body 中的 alias 查找，fallback 到 windowId，再 fallback 到 query param
+        let targetWin: BrowserWindow | undefined;
+        if (typeof parsed.value.alias === "string" && parsed.value.alias) {
+          targetWin = BrowserWindow.getAllWindows().find(w => w.getTitle() === parsed.value.alias);
+        } else if (typeof parsed.value.windowId === "number") {
+          targetWin = BrowserWindow.fromId(parsed.value.windowId) ?? undefined;
+        } else {
+          targetWin = win;
+        }
+        if (!targetWin) return fail(404, "window not found");
+
         const PRESETS: Record<string, { width: number; height: number }> = {
           "iphone15": { width: 393,  height: 852  },
           "ipad":     { width: 820,  height: 1180 },
@@ -258,8 +270,8 @@ function startDebugServer() {
           height = typeof parsed.value.height === "number" ? parsed.value.height : 0;
           if (!width || !height) return fail(400, "missing width/height or unknown preset");
         }
-        win!.setSize(width, height, false);
-        const bounds = win!.getBounds();
+        targetWin.setSize(width, height, false);
+        const bounds = targetWin.getBounds();
         return ok({ ok: true, bounds });
       }
 
