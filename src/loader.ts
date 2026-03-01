@@ -4,12 +4,16 @@ import type { ClipBookmark } from "./types.js";
 
 const LOAD_TIMEOUT_MS = 30000;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 const errorPageHtml = (name: string, reason: string) => `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Load Error</title>
 <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0}
 .box{text-align:center;max-width:400px}h2{color:#ff6b6b}code{background:#333;padding:2px 6px;border-radius:3px}</style>
-</head><body><div class="box"><h2>Failed to load clip</h2><p><code>${name}</code></p><p>${reason}</p></div></body></html>`;
+</head><body><div class="box"><h2>Failed to load clip</h2><p><code>${escapeHtml(name)}</code></p><p>${escapeHtml(reason)}</p></div></body></html>`;
 
 export async function loadClip(win: BrowserWindow, config: ClipBookmark): Promise<void> {
   const safeName = encodeURIComponent(config.name);

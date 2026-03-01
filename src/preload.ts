@@ -10,26 +10,30 @@ const Bridge = Object.freeze({
     ipcRenderer.invoke("pinix:invoke", action, payload),
   clearCache: () => ipcRenderer.invoke("pinix:clear-cache"),
 
-  // 流式 invoke — 每个 stdout chunk 实时回调
+  // 流式 invoke — 每个 stdout chunk 实时回调，返回 cancel 函数
   invokeStream: (
     command: string,
     opts: { args?: string[]; stdin?: string },
     onChunk: (text: string) => void,
     onDone: (exitCode: number) => void
-  ) => {
+  ): (() => void) => {
     const streamId = `s${++streamIdCounter}`;
+    let cancelled = false;
 
-    const onStreamChunk = (_e: any, id: string, text: string, stream: string) => {
+    const cleanup = () => {
+      ipcRenderer.removeListener("pinix:stream-chunk", onStreamChunk);
+      ipcRenderer.removeListener("pinix:stream-done", onStreamDone);
+    };
+
+    const onStreamChunk = (_e: unknown, id: string, text: string, stream: string) => {
       if (id !== streamId) return;
       if (stream === "stdout") onChunk(text);
     };
 
-    const onStreamDone = (_e: any, id: string, exitCode: number) => {
+    const onStreamDone = (_e: unknown, id: string, exitCode: number) => {
       if (id !== streamId) return;
-      // 清理监听器
-      ipcRenderer.removeListener("pinix:stream-chunk", onStreamChunk);
-      ipcRenderer.removeListener("pinix:stream-done", onStreamDone);
-      onDone(exitCode);
+      cleanup();
+      if (!cancelled) onDone(exitCode);
     };
 
     ipcRenderer.on("pinix:stream-chunk", onStreamChunk);
@@ -38,6 +42,11 @@ const Bridge = Object.freeze({
       args: opts.args ?? [],
       stdin: opts.stdin ?? "",
     });
+
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
   },
 });
 

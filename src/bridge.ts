@@ -7,7 +7,7 @@ import type { Session } from "electron";
 import fs from "node:fs";
 import nodePath from "node:path";
 import { ConnectError, Code, createClient } from "@connectrpc/connect";
-import { createConnectTransport } from "@connectrpc/connect-node";
+import { createGrpcTransport } from "@connectrpc/connect-node";
 import { create } from "@bufbuild/protobuf";
 import {
   ClipService,
@@ -119,9 +119,8 @@ export function createClipClient(config: ClipBookmark) {
     req.header.set("Authorization", `Bearer ${config.token}`);
     return next(req);
   };
-  const transport = createConnectTransport({
+  const transport = createGrpcTransport({
     baseUrl: config.server_url,
-    httpVersion: "2",
     interceptors: [authInterceptor],
   });
   return createClient(ClipService, transport);
@@ -136,6 +135,7 @@ type ETagCacheEntry = {
   totalSize: bigint;
 };
 
+const ETAG_CACHE_MAX = 256;
 const etagCache = new Map<string, ETagCacheEntry>();
 
 // ── 缓存清理（磁盘 + 内存） ──
@@ -425,6 +425,10 @@ function createDataSchemeHandler(
         const totalSize = first.value.totalSize;
 
         if (etag) {
+          if (etagCache.size >= ETAG_CACHE_MAX) {
+            const oldest = etagCache.keys().next().value!;
+            etagCache.delete(oldest);
+          }
           etagCache.set(cacheKey, { etag, data: fullData, mimeType, totalSize });
         }
 

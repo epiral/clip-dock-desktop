@@ -1,13 +1,8 @@
 // launcherPreload.ts — Launcher 窗口的 preload
+import type { ClipBookmark } from "./types.js";
 const _electron = require("electron");
 
-interface LauncherClipBookmark {
-  name: string;
-  server_url: string;
-  token: string;
-}
-
-function isClipBookmark(v: unknown): v is LauncherClipBookmark {
+function isClipBookmark(v: unknown): v is ClipBookmark {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (

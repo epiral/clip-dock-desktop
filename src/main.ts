@@ -93,9 +93,9 @@ function openClipWindow(config: ClipBookmark): BrowserWindow {
       if (errs) errs.push({ message, timestamp: Date.now() });
     }
   });
-  win.webContents.on("render-process-gone" as any, (_ev: any, details: any) => {
+  win.webContents.on("render-process-gone", (_ev, details) => {
     const errs = jsErrors.get(win.id);
-    if (errs) errs.push({ message: `render process gone: ${details?.reason ?? 'unknown'}`, timestamp: Date.now() });
+    if (errs) errs.push({ message: `render process gone: ${details.reason}`, timestamp: Date.now() });
   });
 
   // cleanup after native window is destroyed
@@ -104,7 +104,6 @@ function openClipWindow(config: ClipBookmark): BrowserWindow {
     snapshotRefs.delete(win.id);
     consoleMessages.delete(win.id);
     jsErrors.delete(win.id);
-    win.webContents.removeAllListeners();
     ses.clearCache().catch(() => {});
   });
 
@@ -509,13 +508,13 @@ function startDebugServer() {
         };
 
         const keyCode = keyCodeMap[key] ?? key;
-        const mods = modifiers.map((m: string) => m.toLowerCase());
+        const mods = modifiers.map((m: string) => m.toLowerCase()) as Electron.InputEvent["modifiers"];
 
         // Electron sendInputEvent で keyDown + keyUp
         const event: Electron.KeyboardInputEvent = {
           type: "keyDown" as const,
           keyCode,
-          modifiers: mods as any[],
+          modifiers: mods,
         };
         win!.webContents.sendInputEvent(event);
         win!.webContents.sendInputEvent({ ...event, type: "keyUp" as const });
@@ -625,15 +624,16 @@ app.whenReady().then(() => {
   // invoke 方法现在消费 server_streaming InvokeChunk，收集后一次性返回
   ipcMain.handle(
     "pinix:invoke",
-    async (event, action: string, payload: any) => {
+    async (event, action: string, payload: unknown) => {
       const entry = clipRegistry.get(event.sender.id);
       if (!entry) {
         return { stderr: "unknown clip", exitCode: -1 };
       }
 
       try {
-        const payloadArgs = payload?.args;
-        const payloadStdin = payload?.stdin;
+        const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<string, unknown>;
+        const payloadArgs = p.args;
+        const payloadStdin = p.stdin;
         const args = Array.isArray(payloadArgs) ? payloadArgs : [];
         const stdin = typeof payloadStdin === "string" ? payloadStdin : "";
 
@@ -687,17 +687,16 @@ app.whenReady().then(() => {
   // renderer 通过 streamId 区分并发流
   ipcMain.on(
     "pinix:invoke-stream",
-    (event, streamId: string, action: string, payload: any) => {
+    (event, streamId: string, action: string, payload: unknown) => {
       const entry = clipRegistry.get(event.sender.id);
       if (!entry) {
         event.sender.send("pinix:stream-done", streamId, -1, "unknown clip");
         return;
       }
 
-      const payloadArgs = payload?.args;
-      const payloadStdin = payload?.stdin;
-      const args = Array.isArray(payloadArgs) ? payloadArgs : [];
-      const stdin = typeof payloadStdin === "string" ? payloadStdin : "";
+      const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<string, unknown>;
+      const args = Array.isArray(p.args) ? p.args as string[] : [];
+      const stdin = typeof p.stdin === "string" ? p.stdin : "";
 
       const req = create(InvokeRequestSchema, {
         name: action,
