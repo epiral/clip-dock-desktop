@@ -622,6 +622,7 @@ app.whenReady().then(() => {
   });
 
   // Clip 写操作 IPC — 通过 sender.id 查找对应 Clip
+  // invoke 方法现在消费 server_streaming InvokeChunk，收集后一次性返回
   ipcMain.handle(
     "pinix:invoke",
     async (event, action: string, payload: any) => {
@@ -649,12 +650,96 @@ app.whenReady().then(() => {
           args,
           stdin,
         });
-        const res = await entry.client.invoke(req);
-        return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+
+        // 收集 streaming InvokeChunk → 组装兼容的 {stdout, stderr, exitCode}
+        const decoder = new TextDecoder();
+        const stdoutParts: string[] = [];
+        const stderrParts: string[] = [];
+        let exitCode = 0;
+
+        for await (const chunk of entry.client.invoke(req)) {
+          switch (chunk.payload.case) {
+            case "stdout":
+              stdoutParts.push(decoder.decode(chunk.payload.value, { stream: true }));
+              break;
+            case "stderr":
+              stderrParts.push(decoder.decode(chunk.payload.value, { stream: true }));
+              break;
+            case "exitCode":
+              exitCode = chunk.payload.value;
+              break;
+          }
+        }
+
+        return {
+          stdout: stdoutParts.join(""),
+          stderr: stderrParts.join(""),
+          exitCode,
+        };
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
         return { stderr: message, exitCode: -1 };
       }
+    }
+  );
+
+  // invokeStream — 流式 IPC，每个 chunk 实时发送到 renderer
+  // renderer 通过 streamId 区分并发流
+  ipcMain.on(
+    "pinix:invoke-stream",
+    (event, streamId: string, action: string, payload: any) => {
+      const entry = clipRegistry.get(event.sender.id);
+      if (!entry) {
+        event.sender.send("pinix:stream-done", streamId, -1, "unknown clip");
+        return;
+      }
+
+      const payloadArgs = payload?.args;
+      const payloadStdin = payload?.stdin;
+      const args = Array.isArray(payloadArgs) ? payloadArgs : [];
+      const stdin = typeof payloadStdin === "string" ? payloadStdin : "";
+
+      const req = create(InvokeRequestSchema, {
+        name: action,
+        args,
+        stdin,
+      });
+
+      const decoder = new TextDecoder();
+
+      (async () => {
+        try {
+          for await (const chunk of entry.client.invoke(req)) {
+            if (event.sender.isDestroyed()) return;
+            switch (chunk.payload.case) {
+              case "stdout":
+                event.sender.send(
+                  "pinix:stream-chunk",
+                  streamId,
+                  decoder.decode(chunk.payload.value, { stream: true }),
+                  "stdout"
+                );
+                break;
+              case "stderr":
+                event.sender.send(
+                  "pinix:stream-chunk",
+                  streamId,
+                  decoder.decode(chunk.payload.value, { stream: true }),
+                  "stderr"
+                );
+                break;
+              case "exitCode":
+                event.sender.send("pinix:stream-done", streamId, chunk.payload.value);
+                break;
+            }
+          }
+        } catch (err) {
+          if (!event.sender.isDestroyed()) {
+            const message = err instanceof Error ? err.message : "unknown error";
+            event.sender.send("pinix:stream-done", streamId, -1, message);
+          }
+        }
+      })();
     }
   );
 

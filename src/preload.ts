@@ -2,10 +2,43 @@
 // Electron preload 必须是 CJS 格式
 const { contextBridge, ipcRenderer } = require("electron");
 
+// streamId 自增计数器，用于区分并发流
+let streamIdCounter = 0;
+
 const Bridge = Object.freeze({
   invoke: (action: string, payload: unknown) =>
     ipcRenderer.invoke("pinix:invoke", action, payload),
   clearCache: () => ipcRenderer.invoke("pinix:clear-cache"),
+
+  // 流式 invoke — 每个 stdout chunk 实时回调
+  invokeStream: (
+    command: string,
+    opts: { args?: string[]; stdin?: string },
+    onChunk: (text: string) => void,
+    onDone: (exitCode: number) => void
+  ) => {
+    const streamId = `s${++streamIdCounter}`;
+
+    const onStreamChunk = (_e: any, id: string, text: string, stream: string) => {
+      if (id !== streamId) return;
+      if (stream === "stdout") onChunk(text);
+    };
+
+    const onStreamDone = (_e: any, id: string, exitCode: number) => {
+      if (id !== streamId) return;
+      // 清理监听器
+      ipcRenderer.removeListener("pinix:stream-chunk", onStreamChunk);
+      ipcRenderer.removeListener("pinix:stream-done", onStreamDone);
+      onDone(exitCode);
+    };
+
+    ipcRenderer.on("pinix:stream-chunk", onStreamChunk);
+    ipcRenderer.on("pinix:stream-done", onStreamDone);
+    ipcRenderer.send("pinix:invoke-stream", streamId, command, {
+      args: opts.args ?? [],
+      stdin: opts.stdin ?? "",
+    });
+  },
 });
 
 contextBridge.exposeInMainWorld("Bridge", Bridge);
