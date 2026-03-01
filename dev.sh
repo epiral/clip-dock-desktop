@@ -1,11 +1,11 @@
 #!/bin/bash
-# dev.sh — pinix-desktop 开发调试脚本
+# dev.sh — clip-dock-desktop 开发调试脚本
 # 用法：bash dev.sh
-# 日志：tail -f /tmp/pinix-desktop.log
+# 日志：tail -f /tmp/clip-dock-desktop.log
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_FILE="/tmp/pinix-desktop.log"
-PID_FILE="/tmp/pinix-desktop.pid"
+LOG_FILE="/tmp/clip-dock-desktop.log"
+PID_FILE="/tmp/clip-dock-desktop.pid"
 
 cd "$REPO_DIR"
 
@@ -54,7 +54,7 @@ cleanup() {
 trap cleanup INT TERM
 
 echo "" > "$LOG_FILE"
-log "pinix-desktop dev 启动 | repo=$REPO_DIR"
+log "clip-dock-desktop dev 启动 | repo=$REPO_DIR"
 
 do_build
 kill_electron

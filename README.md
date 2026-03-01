@@ -1,6 +1,6 @@
-# pinix-desktop
+# clip-dock-desktop
 
-Electron shell for Pinix — 通过 Connect-RPC 桥接 pinix daemon。
+Clip Dock 桌面端实现 — Pinix 生态的聚合客户端，通过 Connect-RPC 桥接 pinix daemon。
 
 ## 架构
 
@@ -38,7 +38,6 @@ Electron shell for Pinix — 通过 Connect-RPC 桥接 pinix daemon。
 | `src/` | 主进程 TypeScript 源码（main.ts、bridge.ts、loader.ts 等） |
 | `launcher/` | Launcher React UI 子项目（Vite + React） |
 | `dist/` | `pnpm build` 的编译产物（已 gitignore） |
-| `src/launcher.html` | **已废弃** — 旧版 Launcher，新版在 `launcher/` 子项目 |
 
 ## 开发
 
