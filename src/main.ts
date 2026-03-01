@@ -81,9 +81,29 @@ function openClipWindow(config: ClipBookmark): BrowserWindow {
     }
   });
 
+  // Console/Error 监听
+  consoleMessages.set(win.id, []);
+  jsErrors.set(win.id, []);
+  win.webContents.on("console-message", (_ev, level, message) => {
+    const levelMap: Record<number, ConsoleMessage['level']> = { 0: 'log', 1: 'info', 2: 'warn', 3: 'error' };
+    const msgs = consoleMessages.get(win.id);
+    if (msgs) msgs.push({ level: levelMap[level] ?? 'log', message, timestamp: Date.now() });
+    if (level === 3) {
+      const errs = jsErrors.get(win.id);
+      if (errs) errs.push({ message, timestamp: Date.now() });
+    }
+  });
+  win.webContents.on("render-process-gone" as any, (_ev: any, details: any) => {
+    const errs = jsErrors.get(win.id);
+    if (errs) errs.push({ message: `render process gone: ${details?.reason ?? 'unknown'}`, timestamp: Date.now() });
+  });
+
   // cleanup after native window is destroyed
   win.on("closed", () => {
     clipRegistry.delete(id);
+    snapshotRefs.delete(win.id);
+    consoleMessages.delete(win.id);
+    jsErrors.delete(win.id);
     win.webContents.removeAllListeners();
     ses.clearCache().catch(() => {});
   });
@@ -113,7 +133,7 @@ function createLauncherWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 520,
     height: 600,
-    title: "Clip Dock",
+    title: "agents, assembled.",
     webPreferences: {
       preload: path.join(__dirname, "launcherPreload.js"),
       contextIsolation: true,
@@ -129,6 +149,29 @@ function createLauncherWindow(): BrowserWindow {
 import http from "node:http";
 
 import { URL as NodeURL } from "node:url";
+
+// Ref 系统：snapshot 时构建 refs 映射，click/fill/hover 通过 ref 寻址
+interface RefInfo {
+  xpath: string;
+  role: string;
+  name: string;
+  tagName: string;
+}
+const snapshotRefs = new Map<number, Record<string, RefInfo>>();
+
+// Console & Error 收集
+interface ConsoleMessage {
+  level: 'log' | 'warn' | 'error' | 'info';
+  message: string;
+  timestamp: number;
+}
+interface JSError {
+  message: string;
+  timestamp: number;
+  source?: string;
+}
+const consoleMessages = new Map<number, ConsoleMessage[]>();
+const jsErrors = new Map<number, JSError[]>();
 
 function getWin(alias: string | null): BrowserWindow | undefined {
   const wins = BrowserWindow.getAllWindows();
@@ -170,7 +213,7 @@ function startDebugServer() {
     const fail = (code: number, msg: string) => { res.writeHead(code); res.end(msg); };
 
     try {
-      if (!win && p !== "/windows") return fail(404, "no window");
+      if (!win && p !== "/windows" && p !== "/open-clip") return fail(404, "no window");
 
       if (p === "/windows") {
         const all = BrowserWindow.getAllWindows();
@@ -189,20 +232,91 @@ function startDebugServer() {
       }
 
       if (p === "/snapshot") {
-        const tree = await win!.webContents.executeJavaScript(`(function(){
-          let idx=0;
-          function walk(el){
-            const tag=el.tagName?el.tagName.toLowerCase():"";
-            const role=el.getAttribute?el.getAttribute("role"):"";
-            const text=(el.innerText||el.textContent||"").trim().slice(0,80);
-            const interactive=["a","button","input","select","textarea"].includes(tag)||!!role;
-            const node={ref:String(idx++),tag,role:role||tag,text,interactive};
-            const children=Array.from(el.children||[]).map(walk);
-            return children.length?Object.assign(node,{children}):node;
+        const interactive = parsed.searchParams.get("interactive") === "true";
+        const raw = await win!.webContents.executeJavaScript(`(function(){
+          function getXPath(el){
+            if(el.id) return '//*[@id="'+el.id+'"]';
+            const parts=[];
+            while(el&&el.nodeType===1){
+              let idx=1,sib=el.previousSibling;
+              while(sib){if(sib.nodeType===1&&sib.tagName===el.tagName)idx++;sib=sib.previousSibling;}
+              parts.unshift(el.tagName.toLowerCase()+'['+idx+']');
+              el=el.parentElement;
+            }
+            return '/'+parts.join('/');
           }
-          return JSON.stringify(walk(document.body));
+          function isInteractive(el){
+            const tag=el.tagName.toLowerCase();
+            const role=el.getAttribute('role')||'';
+            return ['a','button','input','select','textarea'].includes(tag)
+              ||['button','link','checkbox','radio','combobox','textbox','menuitem','tab','option'].includes(role)
+              ||el.getAttribute('tabindex')==='0';
+          }
+          function getRole(el){
+            const tag=el.tagName.toLowerCase();
+            const role=el.getAttribute('role');
+            if(role) return role;
+            if(tag==='button') return 'button';
+            if(tag==='a') return 'link';
+            const type=(el.getAttribute('type')||'').toLowerCase();
+            if(tag==='input'){
+              if(['text','email','password','search','url','tel','number'].includes(type)||!type) return 'textbox';
+              if(type==='checkbox') return 'checkbox';
+              if(type==='radio') return 'radio';
+              return type;
+            }
+            if(tag==='select') return 'combobox';
+            if(tag==='textarea') return 'textbox';
+            return tag;
+          }
+          function getName(el){
+            return el.getAttribute('aria-label')
+              ||el.getAttribute('title')
+              ||el.getAttribute('placeholder')
+              ||el.getAttribute('alt')
+              ||el.getAttribute('value')
+              ||(el.innerText||'').trim().slice(0,60)
+              ||'';
+          }
+          let refIdx=0;
+          const refs={};
+          function walk(el){
+            const tag=el.tagName?el.tagName.toLowerCase():'';
+            if(!tag) return null;
+            const role=getRole(el);
+            const text=(el.innerText||el.textContent||'').trim().slice(0,80);
+            const inter=isInteractive(el);
+            const node={tag,role,text,interactive:inter};
+            if(inter){
+              const ref=refIdx++;
+              const name=getName(el);
+              node.ref=ref;
+              node.name=name;
+              refs[String(ref)]={xpath:getXPath(el),role:role,name:name,tagName:tag};
+            }
+            const children=[];
+            for(const child of el.children||[]){
+              const c=walk(child);
+              if(c) children.push(c);
+            }
+            if(children.length) node.children=children;
+            return node;
+          }
+          const tree=walk(document.body);
+          // 生成紧凑文本
+          const lines=[];
+          for(const[r,info]of Object.entries(refs)){
+            lines.push('- '+info.role+' "'+info.name+'" [ref='+r+']');
+          }
+          return JSON.stringify({tree,refs,interactive:lines.join('\\n')});
         })()`);
-        return ok(JSON.parse(tree));
+        const result = JSON.parse(raw);
+        // 存储 refs 映射
+        snapshotRefs.set(win!.id, result.refs);
+        if (interactive) {
+          return ok(result.interactive, "text/plain");
+        }
+        return ok(result);
       }
 
       if (p === "/eval") {
@@ -221,28 +335,58 @@ function startDebugServer() {
       if (p === "/click") {
         let raw: string;
         try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
-        const parsed = safeJsonParse(raw);
-        if (!parsed.ok) return fail(400, parsed.error);
-        const selector = parsed.value.selector;
-        if (!selector || typeof selector !== "string") return fail(400, "missing selector");
-        const result = await win!.webContents.executeJavaScript(
-          `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.click();return "ok";}return "not found";})()`
-        );
-        return ok({ result });
+        const body = safeJsonParse(raw);
+        if (!body.ok) return fail(400, body.error);
+        const ref = body.value.ref;
+        const selector = body.value.selector;
+
+        if (ref != null) {
+          const refs = snapshotRefs.get(win!.id) ?? {};
+          const refInfo = refs[String(ref)];
+          if (!refInfo) return fail(404, `ref ${ref} not found, please run /snapshot first`);
+          const result = await win!.webContents.executeJavaScript(
+            `(function(){const el=document.evaluate(${JSON.stringify(refInfo.xpath)},document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;if(!el)return "element not found";el.click();return "ok";})()`
+          );
+          return ok({ result, ref, role: refInfo.role, name: refInfo.name });
+        } else if (selector && typeof selector === "string") {
+          const result = await win!.webContents.executeJavaScript(
+            `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(el){el.click();return "ok";}return "not found";})()`
+          );
+          return ok({ result });
+        } else {
+          return fail(400, "missing ref or selector");
+        }
       }
 
       if (p === "/fill") {
         let raw: string;
         try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
-        const parsed = safeJsonParse(raw);
-        if (!parsed.ok) return fail(400, parsed.error);
-        const selector = parsed.value.selector;
-        const value = parsed.value.value;
-        if (!selector || typeof selector !== "string" || value == null) return fail(400, "missing selector or value");
-        const result = await win!.webContents.executeJavaScript(
-          `(function(){const el=document.querySelector(${JSON.stringify(selector as string)});if(!el)return "not found";el.focus();el.value=${JSON.stringify(String(value))};el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));return "ok";})()`
-        );
-        return ok({ result });
+        const body = safeJsonParse(raw);
+        if (!body.ok) return fail(400, body.error);
+        const ref = body.value.ref;
+        const selector = body.value.selector;
+        const value = body.value.value;
+        if (value == null) return fail(400, "missing value");
+
+        const fillScript = (locator: string) =>
+          `(function(){const el=${locator};if(!el)return "not found";el.focus();el.value=${JSON.stringify(String(value))};el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));return "ok";})()`;
+
+        if (ref != null) {
+          const refs = snapshotRefs.get(win!.id) ?? {};
+          const refInfo = refs[String(ref)];
+          if (!refInfo) return fail(404, `ref ${ref} not found, please run /snapshot first`);
+          const result = await win!.webContents.executeJavaScript(
+            fillScript(`document.evaluate(${JSON.stringify(refInfo.xpath)},document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue`)
+          );
+          return ok({ result, ref, role: refInfo.role, name: refInfo.name });
+        } else if (selector && typeof selector === "string") {
+          const result = await win!.webContents.executeJavaScript(
+            fillScript(`document.querySelector(${JSON.stringify(selector)})`)
+          );
+          return ok({ result });
+        } else {
+          return fail(400, "missing ref or selector");
+        }
       }
 
       if (p === "/scroll") {
@@ -318,7 +462,112 @@ function startDebugServer() {
         }
       }
 
-            fail(404, "unknown endpoint");
+      // POST /hover — ref 或 selector 寻址
+      if (p === "/hover") {
+        let raw: string;
+        try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
+        const body = safeJsonParse(raw);
+        if (!body.ok) return fail(400, body.error);
+        const ref = body.value.ref;
+        const selector = body.value.selector;
+
+        const hoverScript = (locator: string) =>
+          `(function(){const el=${locator};if(!el)return "not found";el.dispatchEvent(new MouseEvent("mouseenter",{bubbles:true}));el.dispatchEvent(new MouseEvent("mouseover",{bubbles:true}));return "ok";})()`;
+
+        if (ref != null) {
+          const refs = snapshotRefs.get(win!.id) ?? {};
+          const refInfo = refs[String(ref)];
+          if (!refInfo) return fail(404, `ref ${ref} not found, please run /snapshot first`);
+          const result = await win!.webContents.executeJavaScript(
+            hoverScript(`document.evaluate(${JSON.stringify(refInfo.xpath)},document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue`)
+          );
+          return ok({ result, ref, role: refInfo.role, name: refInfo.name });
+        } else if (selector && typeof selector === "string") {
+          const result = await win!.webContents.executeJavaScript(
+            hoverScript(`document.querySelector(${JSON.stringify(selector)})`)
+          );
+          return ok({ result });
+        } else {
+          return fail(400, "missing ref or selector");
+        }
+      }
+
+      // POST /press — 键盘按键
+      if (p === "/press") {
+        let raw: string;
+        try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
+        const body = safeJsonParse(raw);
+        if (!body.ok) return fail(400, body.error);
+        const key = body.value.key;
+        if (!key || typeof key !== "string") return fail(400, "missing key");
+        const modifiers = Array.isArray(body.value.modifiers) ? body.value.modifiers as string[] : [];
+
+        const keyCodeMap: Record<string, string> = {
+          Enter: "\r", Tab: "\t", Escape: "\u001B", Space: " ", Backspace: "\b",
+          Delete: "\u007F",
+          ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+        };
+
+        const keyCode = keyCodeMap[key] ?? key;
+        const mods = modifiers.map((m: string) => m.toLowerCase());
+
+        // Electron sendInputEvent で keyDown + keyUp
+        const event: Electron.KeyboardInputEvent = {
+          type: "keyDown" as const,
+          keyCode,
+          modifiers: mods as any[],
+        };
+        win!.webContents.sendInputEvent(event);
+        win!.webContents.sendInputEvent({ ...event, type: "keyUp" as const });
+
+        return ok({ result: "ok", key, modifiers });
+      }
+
+      // GET /console — console 消息收集
+      if (p === "/console") {
+        const clear = parsed.searchParams.get("clear") === "true";
+        const msgs = consoleMessages.get(win!.id) ?? [];
+        const result = [...msgs];
+        if (clear) consoleMessages.set(win!.id, []);
+        return ok({ messages: result, count: result.length });
+      }
+
+      // GET /errors — JS 错误收集
+      if (p === "/errors") {
+        const clear = parsed.searchParams.get("clear") === "true";
+        const errs = jsErrors.get(win!.id) ?? [];
+        const result = [...errs];
+        if (clear) jsErrors.set(win!.id, []);
+        return ok({ errors: result, count: result.length });
+      }
+
+      // POST /open-clip — 打开 Clip 窗口
+      if (req.method === "POST" && p === "/open-clip") {
+        let raw: string;
+        try { raw = await readBody(req); } catch { return fail(400, "failed to read request body"); }
+        const body = safeJsonParse(raw);
+        if (!body.ok) return fail(400, body.error);
+        if (!isClipBookmark(body.value)) return fail(400, "invalid ClipBookmark: need name, server_url, token");
+
+        const config = body.value as ClipBookmark;
+        const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.getTitle() === config.name);
+        if (existing) {
+          existing.focus();
+          return ok({ windowId: existing.id, title: existing.getTitle(), existing: true });
+        }
+        const saved = readClips().find(c => c.name === config.name);
+        const merged: ClipBookmark = saved ? { ...config, windowState: saved.windowState } : config;
+        const newWin = openClipWindow(merged);
+        return ok({ windowId: newWin.id, title: config.name, existing: false });
+      }
+
+      // GET /reload — 重载窗口
+      if (p === "/reload") {
+        win!.webContents.reload();
+        return ok({ ok: true });
+      }
+
+      fail(404, "unknown endpoint");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal server error";
       if (!res.headersSent) fail(500, msg);
