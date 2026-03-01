@@ -14,46 +14,45 @@ import {
 } from "@/components/ui/dialog";
 
 function App() {
-  const [clips, setClips] = useState<ClipConfig[]>([]);
+  const [clips, setClips] = useState<ClipBookmark[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(-1);
-  const [form, setForm] = useState({ alias: "", host: "", port: "", token: "" });
-  const [clearedAlias, setClearedAlias] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", server_url: "", token: "" });
+  const [clearedName, setClearedName] = useState<string | null>(null);
 
   useEffect(() => {
     if (window.LauncherBridge) {
       window.LauncherBridge.getClips().then(setClips);
     } else {
       setClips([
-        { alias: "Notes", host: "100.66.47.40", port: 9875, token: "demo" },
-        { alias: "Voice Inbox", host: "100.66.47.40", port: 9876, token: "demo" },
+        { name: "Notes", server_url: "http://100.66.47.40:9875", token: "demo" },
+        { name: "Voice Inbox", server_url: "http://100.66.47.40:9875", token: "demo" },
       ]);
     }
   }, []);
 
   function openAdd() {
     setEditIndex(-1);
-    setForm({ alias: "", host: "", port: "", token: "" });
+    setForm({ name: "", server_url: "", token: "" });
     setDialogOpen(true);
   }
 
   function openEdit(index: number) {
     const c = clips[index];
     setEditIndex(index);
-    setForm({ alias: c.alias, host: c.host, port: String(c.port), token: c.token });
+    setForm({ name: c.name, server_url: c.server_url, token: c.token });
     setDialogOpen(true);
   }
 
   async function handleSave() {
-    const alias = form.alias.trim();
-    const host = form.host.trim();
-    const port = parseInt(form.port, 10);
+    const name = form.name.trim();
+    const server_url = form.server_url.trim();
     const token = form.token.trim();
-    if (!alias || !host || !port || !token) {
+    if (!name || !server_url || !token) {
       alert("请填写所有字段");
       return;
     }
-    const config: ClipConfig = { alias, host, port, token };
+    const config: ClipBookmark = { name, server_url, token };
     const next = [...clips];
     if (editIndex >= 0) {
       next[editIndex] = config;
@@ -66,22 +65,32 @@ function App() {
   }
 
   async function handleDelete(index: number) {
-    if (!confirm(`确定删除 "${clips[index].alias}"？`)) return;
+    if (!confirm(`确定删除 "${clips[index].name}"？`)) return;
     const next = clips.filter((_, i) => i !== index);
     if (window.LauncherBridge) await window.LauncherBridge.saveClips(next);
     setClips(next);
   }
 
-  async function handleClearCache(alias: string) {
+  async function handleClearCache(name: string) {
     if (window.LauncherBridge?.clearCache) {
-      await window.LauncherBridge.clearCache(alias);
+      await window.LauncherBridge.clearCache(name);
     }
-    setClearedAlias(alias);
-    setTimeout(() => setClearedAlias(null), 1500);
+    setClearedName(name);
+    setTimeout(() => setClearedName(null), 1500);
   }
 
   async function handleOpen(index: number) {
     if (window.LauncherBridge) await window.LauncherBridge.openClip(clips[index]);
+  }
+
+  // 从 server_url 提取显示用的 host 信息
+  function displayUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      return u.host;
+    } catch {
+      return url;
+    }
   }
 
   return (
@@ -94,7 +103,7 @@ function App() {
               className="text-[2rem] font-bold tracking-tight text-foreground leading-none"
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
-              Pinix
+              Clip Dock
             </h1>
             <button
               onClick={openAdd}
@@ -126,19 +135,19 @@ function App() {
                       className="text-lg font-normal text-foreground leading-snug"
                       style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
                     >
-                      {clip.alias}
+                      {clip.name}
                     </div>
                     <div className="mt-0.5 font-mono text-[11px] tracking-wider text-muted-foreground">
-                      {clip.host}:{clip.port}
+                      {displayUrl(clip.server_url)}
                     </div>
                   </div>
                   <div className="ml-4 flex shrink-0 gap-2 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleClearCache(clip.alias); }}
+                      onClick={(e) => { e.stopPropagation(); handleClearCache(clip.name); }}
                       title="Clear cache"
                       className="text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {clearedAlias === clip.alias ? (
+                      {clearedName === clip.name ? (
                         <span className="text-xs text-green-500">✓</span>
                       ) : (
                         <RefreshCw className="size-3.5" />
@@ -179,39 +188,26 @@ function App() {
           </DialogHeader>
           <div className="grid gap-5 py-2">
             <div className="grid gap-1.5">
-              <label htmlFor="alias" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Alias
+              <label htmlFor="name" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Name
               </label>
               <input
-                id="alias"
-                placeholder="Notes"
-                value={form.alias}
-                onChange={(e) => setForm({ ...form, alias: e.target.value })}
+                id="name"
+                placeholder="hello-world"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="h-9 w-full border-0 border-b border-border bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
             <div className="grid gap-1.5">
-              <label htmlFor="host" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Host
+              <label htmlFor="server_url" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Server URL
               </label>
               <input
-                id="host"
-                placeholder="100.66.47.40"
-                value={form.host}
-                onChange={(e) => setForm({ ...form, host: e.target.value })}
-                className="h-9 w-full border-0 border-b border-border bg-transparent px-0 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label htmlFor="port" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Port
-              </label>
-              <input
-                id="port"
-                type="number"
-                placeholder="9875"
-                value={form.port}
-                onChange={(e) => setForm({ ...form, port: e.target.value })}
+                id="server_url"
+                placeholder="http://100.66.47.40:9875"
+                value={form.server_url}
+                onChange={(e) => setForm({ ...form, server_url: e.target.value })}
                 className="h-9 w-full border-0 border-b border-border bg-transparent px-0 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"
               />
             </div>
@@ -222,7 +218,7 @@ function App() {
               <input
                 id="token"
                 type="password"
-                placeholder="鉴权 token"
+                placeholder="Clip Token"
                 value={form.token}
                 onChange={(e) => setForm({ ...form, token: e.target.value })}
                 className="h-9 w-full border-0 border-b border-border bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors"

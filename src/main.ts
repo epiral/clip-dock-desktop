@@ -7,20 +7,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { create } from "@bufbuild/protobuf";
-import { InvokeRequestSchema } from "./gen/pinix/v1/pinix_pb.js";
+import { InvokeRequestSchema, GetInfoRequestSchema } from "./gen/pinix/v1/pinix_pb.js";
 import { registerSchemes, registerClipSchemeHandlers, createClipClient, clearClipCache } from "./bridge.js";
 import { loadClip } from "./loader.js";
 import { readClips, writeClips } from "./clipsStore.js";
-import type { ClipConfig } from "./types.js";
+import type { ClipBookmark } from "./types.js";
 
-// fixed: 运行时类型校验 guard — 消灭关键路径上的 any
-function isClipConfig(v: unknown): v is ClipConfig {
+function isClipBookmark(v: unknown): v is ClipBookmark {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
-    typeof obj.alias === "string" && obj.alias.length > 0 &&
-    typeof obj.host === "string" && obj.host.length > 0 &&
-    typeof obj.port === "number" && Number.isInteger(obj.port) && obj.port > 0 && obj.port <= 65535 &&
+    typeof obj.name === "string" && obj.name.length > 0 &&
+    typeof obj.server_url === "string" && obj.server_url.length > 0 &&
     typeof obj.token === "string"
   );
 }
@@ -30,15 +28,15 @@ registerSchemes();
 
 // webContentsId → { config, client } 映射
 type ClipEntry = {
-  config: ClipConfig;
+  config: ClipBookmark;
   client: ReturnType<typeof createClipClient>;
 };
 const clipRegistry = new Map<number, ClipEntry>();
 
-// 为指定 ClipConfig 创建独立窗口
-function openClipWindow(config: ClipConfig): BrowserWindow {
+// 为指定 ClipBookmark 创建独立窗口
+function openClipWindow(config: ClipBookmark): BrowserWindow {
   const cacheDir = path.join(app.getPath("userData"), "clips");
-  const ses = session.fromPartition(`clip-${config.alias}`);
+  const ses = session.fromPartition(`clip-${config.name}`);
   const client = registerClipSchemeHandlers(ses, config, cacheDir);
 
   const ws = config.windowState;
@@ -46,7 +44,7 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
     width: ws?.width ?? 1200,
     height: ws?.height ?? 800,
     ...(ws?.x != null && ws?.y != null ? { x: ws.x, y: ws.y } : {}),
-    title: config.alias,
+    title: config.name,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -58,19 +56,28 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
   const id = win.webContents.id;
   clipRegistry.set(id, { config, client });
 
+  // GetInfo — 用返回的 name 更新窗口标题
+  client.getInfo(create(GetInfoRequestSchema, {})).then((info) => {
+    if (info.name && !win.isDestroyed()) {
+      win.setTitle(info.name);
+    }
+  }).catch((err) => {
+    console.warn(`[GetInfo] ${config.name}: ${err instanceof Error ? err.message : err}`);
+  });
+
   // persist windowState before native window is destroyed
   win.on("close", () => {
     try {
       if (win.isDestroyed()) return;
       const bounds = win.getBounds();
       const clips = readClips();
-      const idx = clips.findIndex(c => c.alias === config.alias);
+      const idx = clips.findIndex(c => c.name === config.name);
       if (idx !== -1) {
         clips[idx].windowState = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
         writeClips(clips);
       }
     } catch (err) {
-      console.error(`[windowState] persist failed for ${config.alias}:`, err);
+      console.error(`[windowState] persist failed for ${config.name}:`, err);
     }
   });
 
@@ -90,14 +97,13 @@ function openClipWindow(config: ClipConfig): BrowserWindow {
       !input.shift
     ) {
       event.preventDefault();
-      clearClipCache(config.alias, cacheDir);
+      clearClipCache(config.name, cacheDir);
       win.webContents.reload();
     }
   });
 
-  // fixed: loadClip 加 catch — 超时/失败时窗口已显示错误 HTML
   loadClip(win, config).catch((err) => {
-    console.error(`[loadClip] ${config.alias}: ${err instanceof Error ? err.message : err}`);
+    console.error(`[loadClip] ${config.name}: ${err instanceof Error ? err.message : err}`);
   });
   return win;
 }
@@ -107,7 +113,7 @@ function createLauncherWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 520,
     height: 600,
-    title: "Pinix Launcher",
+    title: "Clip Dock",
     webPreferences: {
       preload: path.join(__dirname, "launcherPreload.js"),
       contextIsolation: true,
@@ -130,7 +136,6 @@ function getWin(alias: string | null): BrowserWindow | undefined {
   return wins.find((w) => w.getTitle() === alias) ?? wins[0];
 }
 
-// fixed: readBody — request error 事件监听 + JSON.parse 异常 catch
 async function readBody(req: import("http").IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -150,7 +155,6 @@ function safeJsonParse(raw: string): { ok: true; value: Record<string, unknown> 
   }
 }
 
-// fixed: debug server — 环境变量开关 PINIX_DEBUG=1，所有 endpoint 包裹 try/catch
 function startDebugServer() {
   const server = http.createServer(async (req, res) => {
     const parsed = new NodeURL(req.url ?? "/", "http://localhost:9876");
@@ -260,7 +264,6 @@ function startDebugServer() {
         const parsed = safeJsonParse(raw);
         if (!parsed.ok) return fail(400, parsed.error);
 
-        // 优先用 body 中的 alias 查找，fallback 到 windowId，再 fallback 到 query param
         let targetWin: BrowserWindow | undefined;
         if (typeof parsed.value.alias === "string" && parsed.value.alias) {
           targetWin = BrowserWindow.getAllWindows().find(w => w.getTitle() === parsed.value.alias);
@@ -317,7 +320,6 @@ function startDebugServer() {
 
             fail(404, "unknown endpoint");
     } catch (err) {
-      // fixed: 顶层 catch — 所有未预期异常返回 500
       const msg = err instanceof Error ? err.message : "internal server error";
       if (!res.headersSent) fail(500, msg);
     }
@@ -329,19 +331,16 @@ app.whenReady().then(() => {
   // Launcher IPC handlers
   ipcMain.handle("launcher:get-clips", () => readClips());
 
-  // fixed: launcher:open-clip 加运行时类型校验 + catch 失败通知 Launcher UI
   ipcMain.handle("launcher:open-clip", (_event, config: unknown) => {
-    if (!isClipConfig(config)) throw new Error("invalid ClipConfig");
+    if (!isClipBookmark(config)) throw new Error("invalid ClipBookmark");
     try {
-      // 已开则聚焦，避免重复创建同 session 导致 scheme handler 冲突
-      const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.getTitle() === config.alias);
+      const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.getTitle() === config.name);
       if (existing) {
         existing.focus();
         return;
       }
-      // 从磁盘读取最新 windowState，合并进 config（Launcher 持有的是启动时快照）
-      const saved = readClips().find(c => c.alias === config.alias);
-      const merged: ClipConfig = saved ? { ...config, windowState: saved.windowState } : config;
+      const saved = readClips().find(c => c.name === config.name);
+      const merged: ClipBookmark = saved ? { ...config, windowState: saved.windowState } : config;
       openClipWindow(merged);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "failed to open clip";
@@ -349,23 +348,22 @@ app.whenReady().then(() => {
     }
   });
 
-  // fixed: launcher:save-clips 加运行时类型校验
   ipcMain.handle("launcher:save-clips", (_event, clips: unknown) => {
-    if (!Array.isArray(clips) || !clips.every(isClipConfig)) {
+    if (!Array.isArray(clips) || !clips.every(isClipBookmark)) {
       throw new Error("invalid clips array");
     }
     writeClips(clips);
   });
 
-  // 清缓存 + 重载 IPC — 参数 alias 可选，缺省从 sender 推断
-  ipcMain.handle("pinix:clear-cache", (event, alias?: string) => {
+  // 清缓存 + 重载 IPC — 参数 name 可选，缺省从 sender 推断
+  ipcMain.handle("pinix:clear-cache", (event, clipName?: string) => {
     const cacheDir = path.join(app.getPath("userData"), "clips");
-    const resolvedAlias =
-      alias ?? clipRegistry.get(event.sender.id)?.config.alias;
-    if (!resolvedAlias) throw new Error("unknown clip");
-    clearClipCache(resolvedAlias, cacheDir);
+    const resolvedName =
+      clipName ?? clipRegistry.get(event.sender.id)?.config.name;
+    if (!resolvedName) throw new Error("unknown clip");
+    clearClipCache(resolvedName, cacheDir);
     for (const [wcId, entry] of clipRegistry) {
-      if (entry.config.alias === resolvedAlias) {
+      if (entry.config.name === resolvedName) {
         const win = BrowserWindow.getAllWindows().find(
           (w) => w.webContents.id === wcId
         );
@@ -413,7 +411,6 @@ app.whenReady().then(() => {
 
   // 启动 Launcher
   createLauncherWindow();
-  // fixed: debug server 环境变量开关 — PINIX_DEBUG=1 或 NODE_ENV 非 production 时启动
   if (process.env.PINIX_DEBUG === "1" || process.env.NODE_ENV !== "production") {
     startDebugServer();
   }

@@ -1,23 +1,18 @@
 // launcherPreload.ts — Launcher 窗口的 preload
-// Electron preload 必须是 CJS 格式
-// 使用 _electron 避免与 preload.ts 变量名冲突（两文件均为 script 模式）
 const _electron = require("electron");
 
-// fixed: 运行时类型校验 — 消灭 any，非法输入拒绝写入
-interface LauncherClipConfig {
-  alias: string;
-  host: string;
-  port: number;
+interface LauncherClipBookmark {
+  name: string;
+  server_url: string;
   token: string;
 }
 
-function isClipConfig(v: unknown): v is LauncherClipConfig {
+function isClipBookmark(v: unknown): v is LauncherClipBookmark {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
-    typeof obj.alias === "string" && obj.alias.length > 0 &&
-    typeof obj.host === "string" && obj.host.length > 0 &&
-    typeof obj.port === "number" && Number.isInteger(obj.port) && obj.port > 0 && obj.port <= 65535 &&
+    typeof obj.name === "string" && obj.name.length > 0 &&
+    typeof obj.server_url === "string" && obj.server_url.length > 0 &&
     typeof obj.token === "string"
   );
 }
@@ -25,20 +20,20 @@ function isClipConfig(v: unknown): v is LauncherClipConfig {
 const LauncherBridge = Object.freeze({
   getClips: () => _electron.ipcRenderer.invoke("launcher:get-clips"),
   openClip: (config: unknown) => {
-    if (!isClipConfig(config)) return Promise.reject(new Error("invalid ClipConfig"));
+    if (!isClipBookmark(config)) return Promise.reject(new Error("invalid ClipBookmark"));
     return _electron.ipcRenderer.invoke("launcher:open-clip", config);
   },
   saveClips: (clips: unknown) => {
-    if (!Array.isArray(clips) || !clips.every(isClipConfig)) {
+    if (!Array.isArray(clips) || !clips.every(isClipBookmark)) {
       return Promise.reject(new Error("invalid clips array"));
     }
     return _electron.ipcRenderer.invoke("launcher:save-clips", clips);
   },
-  clearCache: (alias: string) => {
-    if (typeof alias !== "string" || alias.length === 0) {
-      return Promise.reject(new Error("invalid alias"));
+  clearCache: (name: string) => {
+    if (typeof name !== "string" || name.length === 0) {
+      return Promise.reject(new Error("invalid name"));
     }
-    return _electron.ipcRenderer.invoke("pinix:clear-cache", alias);
+    return _electron.ipcRenderer.invoke("pinix:clear-cache", name);
   },
 });
 

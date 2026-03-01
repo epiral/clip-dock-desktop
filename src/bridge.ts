@@ -15,7 +15,7 @@ import {
 } from "./gen/pinix/v1/pinix_pb.js";
 import type { ReadFileChunk } from "./gen/pinix/v1/pinix_pb.js";
 import type { Interceptor } from "@connectrpc/connect";
-import type { ClipConfig } from "./types.js";
+import type { ClipBookmark } from "./types.js";
 
 // ── Range 解析 ──
 
@@ -114,13 +114,13 @@ export function registerSchemes(): void {
 
 // ── RPC 客户端 ──
 
-export function createClipClient(config: ClipConfig) {
+export function createClipClient(config: ClipBookmark) {
   const authInterceptor: Interceptor = (next) => (req) => {
     req.header.set("Authorization", `Bearer ${config.token}`);
     return next(req);
   };
   const transport = createConnectTransport({
-    baseUrl: `http://${config.host}:${config.port}`,
+    baseUrl: config.server_url,
     httpVersion: "2",
     interceptors: [authInterceptor],
   });
@@ -140,10 +140,10 @@ const etagCache = new Map<string, ETagCacheEntry>();
 
 // ── 缓存清理（磁盘 + 内存） ──
 
-export function clearClipCache(alias: string, cacheDir: string): void {
-  const webCacheDir = nodePath.join(cacheDir, alias, "web");
+export function clearClipCache(name: string, cacheDir: string): void {
+  const webCacheDir = nodePath.join(cacheDir, name, "web");
   fs.rmSync(webCacheDir, { recursive: true, force: true });
-  const prefix = `${alias}:`;
+  const prefix = `${name}:`;
   for (const key of etagCache.keys()) {
     if (key.startsWith(prefix)) etagCache.delete(key);
   }
@@ -153,7 +153,7 @@ export function clearClipCache(alias: string, cacheDir: string): void {
 
 export function registerClipSchemeHandlers(
   ses: Session,
-  config: ClipConfig,
+  config: ClipBookmark,
   cacheDir: string
 ) {
   const client = createClipClient(config);
@@ -164,11 +164,11 @@ export function registerClipSchemeHandlers(
   }
   ses.protocol.handle(
     "pinix-web",
-    createWebSchemeHandler(client, config.alias, cacheDir)
+    createWebSchemeHandler(client, config.name, cacheDir)
   );
   ses.protocol.handle(
     "pinix-data",
-    createDataSchemeHandler(client, config.alias)
+    createDataSchemeHandler(client, config.name)
   );
   return client;
 }

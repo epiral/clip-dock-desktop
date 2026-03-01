@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file pinix/v1/pinix.proto.
  */
 export const file_pinix_v1_pinix: GenFile = /*@__PURE__*/
-  fileDesc("ChRwaW5peC92MS9waW5peC5wcm90bxIIcGluaXgudjEiMgoRQ3JlYXRlQ2xpcFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgd3b3JrZGlyGAIgASgJIiUKEkNyZWF0ZUNsaXBSZXNwb25zZRIPCgdjbGlwX2lkGAEgASgJIhIKEExpc3RDbGlwc1JlcXVlc3QiMgoRTGlzdENsaXBzUmVzcG9uc2USHQoFY2xpcHMYASADKAsyDi5waW5peC52MS5DbGlwIjYKBENsaXASDwoHY2xpcF9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEg8KB3dvcmtkaXIYAyABKAkiJAoRRGVsZXRlQ2xpcFJlcXVlc3QSDwoHY2xpcF9pZBgBIAEoCSIUChJEZWxldGVDbGlwUmVzcG9uc2UiNgoUR2VuZXJhdGVUb2tlblJlcXVlc3QSDwoHY2xpcF9pZBgBIAEoCRINCgVsYWJlbBgCIAEoCSImChVHZW5lcmF0ZVRva2VuUmVzcG9uc2USDQoFdG9rZW4YASABKAkiIwoSUmV2b2tlVG9rZW5SZXF1ZXN0Eg0KBXRva2VuGAEgASgJIhUKE1Jldm9rZVRva2VuUmVzcG9uc2UiOgoNSW52b2tlUmVxdWVzdBIMCgRuYW1lGAEgASgJEgwKBGFyZ3MYAiADKAkSDQoFc3RkaW4YAyABKAkiQwoOSW52b2tlUmVzcG9uc2USDgoGc3Rkb3V0GAEgASgJEg4KBnN0ZGVychgCIAEoCRIRCglleGl0X2NvZGUYAyABKAUiVgoPUmVhZEZpbGVSZXF1ZXN0EgwKBHBhdGgYASABKAkSDgoGb2Zmc2V0GAIgASgDEg4KBmxlbmd0aBgDIAEoAxIVCg1pZl9ub25lX21hdGNoGAQgASgJIngKDVJlYWRGaWxlQ2h1bmsSDAoEZGF0YRgBIAEoDBIOCgZvZmZzZXQYAiABKAMSEQoJbWltZV90eXBlGAMgASgJEhIKCnRvdGFsX3NpemUYBCABKAMSDAoEZXRhZxgFIAEoCRIUCgxub3RfbW9kaWZpZWQYBiABKAgyhAMKDFBpbml4U2VydmljZRJHCgpDcmVhdGVDbGlwEhsucGluaXgudjEuQ3JlYXRlQ2xpcFJlcXVlc3QaHC5waW5peC52MS5DcmVhdGVDbGlwUmVzcG9uc2USRAoJTGlzdENsaXBzEhoucGluaXgudjEuTGlzdENsaXBzUmVxdWVzdBobLnBpbml4LnYxLkxpc3RDbGlwc1Jlc3BvbnNlEkcKCkRlbGV0ZUNsaXASGy5waW5peC52MS5EZWxldGVDbGlwUmVxdWVzdBocLnBpbml4LnYxLkRlbGV0ZUNsaXBSZXNwb25zZRJQCg1HZW5lcmF0ZVRva2VuEh4ucGluaXgudjEuR2VuZXJhdGVUb2tlblJlcXVlc3QaHy5waW5peC52MS5HZW5lcmF0ZVRva2VuUmVzcG9uc2USSgoLUmV2b2tlVG9rZW4SHC5waW5peC52MS5SZXZva2VUb2tlblJlcXVlc3QaHS5waW5peC52MS5SZXZva2VUb2tlblJlc3BvbnNlMowBCgtDbGlwU2VydmljZRI7CgZJbnZva2USFy5waW5peC52MS5JbnZva2VSZXF1ZXN0GhgucGluaXgudjEuSW52b2tlUmVzcG9uc2USQAoIUmVhZEZpbGUSGS5waW5peC52MS5SZWFkRmlsZVJlcXVlc3QaFy5waW5peC52MS5SZWFkRmlsZUNodW5rMAFCMVovZ2l0aHViLmNvbS9lcGlyYWwvcGluaXgvZ2VuL2dvL3Bpbml4L3YxO3Bpbml4djFiBnByb3RvMw");
+  fileDesc("ChRwaW5peC92MS9waW5peC5wcm90bxIIcGluaXgudjEiMgoRQ3JlYXRlQ2xpcFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIPCgd3b3JrZGlyGAIgASgJIiUKEkNyZWF0ZUNsaXBSZXNwb25zZRIPCgdjbGlwX2lkGAEgASgJIhIKEExpc3RDbGlwc1JlcXVlc3QiNgoRTGlzdENsaXBzUmVzcG9uc2USIQoFY2xpcHMYASADKAsyEi5waW5peC52MS5DbGlwSW5mbyJaCghDbGlwSW5mbxIPCgdjbGlwX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSDAoEZGVzYxgDIAEoCRIQCghjb21tYW5kcxgEIAMoCRIPCgdoYXNfd2ViGAUgASgIIiQKEURlbGV0ZUNsaXBSZXF1ZXN0Eg8KB2NsaXBfaWQYASABKAkiFAoSRGVsZXRlQ2xpcFJlc3BvbnNlIjYKFEdlbmVyYXRlVG9rZW5SZXF1ZXN0Eg8KB2NsaXBfaWQYASABKAkSDQoFbGFiZWwYAiABKAkiMgoVR2VuZXJhdGVUb2tlblJlc3BvbnNlEgoKAmlkGAEgASgJEg0KBXRva2VuGAIgASgJIhMKEUxpc3RUb2tlbnNSZXF1ZXN0IjkKEkxpc3RUb2tlbnNSZXNwb25zZRIjCgZ0b2tlbnMYASADKAsyEy5waW5peC52MS5Ub2tlbkluZm8iWQoJVG9rZW5JbmZvEgoKAmlkGAEgASgJEg8KB2NsaXBfaWQYAiABKAkSDQoFbGFiZWwYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoCRIMCgRoaW50GAUgASgJIiAKElJldm9rZVRva2VuUmVxdWVzdBIKCgJpZBgBIAEoCSIVChNSZXZva2VUb2tlblJlc3BvbnNlIjoKDUludm9rZVJlcXVlc3QSDAoEbmFtZRgBIAEoCRIMCgRhcmdzGAIgAygJEg0KBXN0ZGluGAMgASgJIkMKDkludm9rZVJlc3BvbnNlEg4KBnN0ZG91dBgBIAEoCRIOCgZzdGRlcnIYAiABKAkSEQoJZXhpdF9jb2RlGAMgASgFIlYKD1JlYWRGaWxlUmVxdWVzdBIMCgRwYXRoGAEgASgJEg4KBm9mZnNldBgCIAEoAxIOCgZsZW5ndGgYAyABKAMSFQoNaWZfbm9uZV9tYXRjaBgEIAEoCSJ4Cg1SZWFkRmlsZUNodW5rEgwKBGRhdGEYASABKAwSDgoGb2Zmc2V0GAIgASgDEhEKCW1pbWVfdHlwZRgDIAEoCRISCgp0b3RhbF9zaXplGAQgASgDEgwKBGV0YWcYBSABKAkSFAoMbm90X21vZGlmaWVkGAYgASgIIhAKDkdldEluZm9SZXF1ZXN0IlcKD0dldEluZm9SZXNwb25zZRIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEhAKCGNvbW1hbmRzGAMgAygJEg8KB2hhc193ZWIYBCABKAgyzQMKDEFkbWluU2VydmljZRJHCgpDcmVhdGVDbGlwEhsucGluaXgudjEuQ3JlYXRlQ2xpcFJlcXVlc3QaHC5waW5peC52MS5DcmVhdGVDbGlwUmVzcG9uc2USRAoJTGlzdENsaXBzEhoucGluaXgudjEuTGlzdENsaXBzUmVxdWVzdBobLnBpbml4LnYxLkxpc3RDbGlwc1Jlc3BvbnNlEkcKCkRlbGV0ZUNsaXASGy5waW5peC52MS5EZWxldGVDbGlwUmVxdWVzdBocLnBpbml4LnYxLkRlbGV0ZUNsaXBSZXNwb25zZRJQCg1HZW5lcmF0ZVRva2VuEh4ucGluaXgudjEuR2VuZXJhdGVUb2tlblJlcXVlc3QaHy5waW5peC52MS5HZW5lcmF0ZVRva2VuUmVzcG9uc2USRwoKTGlzdFRva2VucxIbLnBpbml4LnYxLkxpc3RUb2tlbnNSZXF1ZXN0GhwucGluaXgudjEuTGlzdFRva2Vuc1Jlc3BvbnNlEkoKC1Jldm9rZVRva2VuEhwucGluaXgudjEuUmV2b2tlVG9rZW5SZXF1ZXN0Gh0ucGluaXgudjEuUmV2b2tlVG9rZW5SZXNwb25zZTLMAQoLQ2xpcFNlcnZpY2USOwoGSW52b2tlEhcucGluaXgudjEuSW52b2tlUmVxdWVzdBoYLnBpbml4LnYxLkludm9rZVJlc3BvbnNlEkAKCFJlYWRGaWxlEhkucGluaXgudjEuUmVhZEZpbGVSZXF1ZXN0GhcucGluaXgudjEuUmVhZEZpbGVDaHVuazABEj4KB0dldEluZm8SGC5waW5peC52MS5HZXRJbmZvUmVxdWVzdBoZLnBpbml4LnYxLkdldEluZm9SZXNwb25zZUIxWi9naXRodWIuY29tL2VwaXJhbC9waW5peC9nZW4vZ28vcGluaXgvdjE7cGluaXh2MWIGcHJvdG8z");
 
 /**
  * @generated from message pinix.v1.CreateClipRequest
@@ -69,9 +69,9 @@ export const ListClipsRequestSchema: GenMessage<ListClipsRequest> = /*@__PURE__*
  */
 export type ListClipsResponse = Message<"pinix.v1.ListClipsResponse"> & {
   /**
-   * @generated from field: repeated pinix.v1.Clip clips = 1;
+   * @generated from field: repeated pinix.v1.ClipInfo clips = 1;
    */
-  clips: Clip[];
+  clips: ClipInfo[];
 };
 
 /**
@@ -82,9 +82,9 @@ export const ListClipsResponseSchema: GenMessage<ListClipsResponse> = /*@__PURE_
   messageDesc(file_pinix_v1_pinix, 3);
 
 /**
- * @generated from message pinix.v1.Clip
+ * @generated from message pinix.v1.ClipInfo
  */
-export type Clip = Message<"pinix.v1.Clip"> & {
+export type ClipInfo = Message<"pinix.v1.ClipInfo"> & {
   /**
    * @generated from field: string clip_id = 1;
    */
@@ -96,16 +96,26 @@ export type Clip = Message<"pinix.v1.Clip"> & {
   name: string;
 
   /**
-   * @generated from field: string workdir = 3;
+   * @generated from field: string desc = 3;
    */
-  workdir: string;
+  desc: string;
+
+  /**
+   * @generated from field: repeated string commands = 4;
+   */
+  commands: string[];
+
+  /**
+   * @generated from field: bool has_web = 5;
+   */
+  hasWeb: boolean;
 };
 
 /**
- * Describes the message pinix.v1.Clip.
- * Use `create(ClipSchema)` to create a new message.
+ * Describes the message pinix.v1.ClipInfo.
+ * Use `create(ClipInfoSchema)` to create a new message.
  */
-export const ClipSchema: GenMessage<Clip> = /*@__PURE__*/
+export const ClipInfoSchema: GenMessage<ClipInfo> = /*@__PURE__*/
   messageDesc(file_pinix_v1_pinix, 4);
 
 /**
@@ -143,6 +153,8 @@ export const DeleteClipResponseSchema: GenMessage<DeleteClipResponse> = /*@__PUR
  */
 export type GenerateTokenRequest = Message<"pinix.v1.GenerateTokenRequest"> & {
   /**
+   * required — cannot generate Super Token via API
+   *
    * @generated from field: string clip_id = 1;
    */
   clipId: string;
@@ -165,7 +177,12 @@ export const GenerateTokenRequestSchema: GenMessage<GenerateTokenRequest> = /*@_
  */
 export type GenerateTokenResponse = Message<"pinix.v1.GenerateTokenResponse"> & {
   /**
-   * @generated from field: string token = 1;
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string token = 2;
    */
   token: string;
 };
@@ -178,13 +195,86 @@ export const GenerateTokenResponseSchema: GenMessage<GenerateTokenResponse> = /*
   messageDesc(file_pinix_v1_pinix, 8);
 
 /**
+ * @generated from message pinix.v1.ListTokensRequest
+ */
+export type ListTokensRequest = Message<"pinix.v1.ListTokensRequest"> & {
+};
+
+/**
+ * Describes the message pinix.v1.ListTokensRequest.
+ * Use `create(ListTokensRequestSchema)` to create a new message.
+ */
+export const ListTokensRequestSchema: GenMessage<ListTokensRequest> = /*@__PURE__*/
+  messageDesc(file_pinix_v1_pinix, 9);
+
+/**
+ * @generated from message pinix.v1.ListTokensResponse
+ */
+export type ListTokensResponse = Message<"pinix.v1.ListTokensResponse"> & {
+  /**
+   * @generated from field: repeated pinix.v1.TokenInfo tokens = 1;
+   */
+  tokens: TokenInfo[];
+};
+
+/**
+ * Describes the message pinix.v1.ListTokensResponse.
+ * Use `create(ListTokensResponseSchema)` to create a new message.
+ */
+export const ListTokensResponseSchema: GenMessage<ListTokensResponse> = /*@__PURE__*/
+  messageDesc(file_pinix_v1_pinix, 10);
+
+/**
+ * @generated from message pinix.v1.TokenInfo
+ */
+export type TokenInfo = Message<"pinix.v1.TokenInfo"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string clip_id = 2;
+   */
+  clipId: string;
+
+  /**
+   * @generated from field: string label = 3;
+   */
+  label: string;
+
+  /**
+   * RFC 3339
+   *
+   * @generated from field: string created_at = 4;
+   */
+  createdAt: string;
+
+  /**
+   * last 4 chars of token
+   *
+   * @generated from field: string hint = 5;
+   */
+  hint: string;
+};
+
+/**
+ * Describes the message pinix.v1.TokenInfo.
+ * Use `create(TokenInfoSchema)` to create a new message.
+ */
+export const TokenInfoSchema: GenMessage<TokenInfo> = /*@__PURE__*/
+  messageDesc(file_pinix_v1_pinix, 11);
+
+/**
  * @generated from message pinix.v1.RevokeTokenRequest
  */
 export type RevokeTokenRequest = Message<"pinix.v1.RevokeTokenRequest"> & {
   /**
-   * @generated from field: string token = 1;
+   * revoke by token id, not token value
+   *
+   * @generated from field: string id = 1;
    */
-  token: string;
+  id: string;
 };
 
 /**
@@ -192,7 +282,7 @@ export type RevokeTokenRequest = Message<"pinix.v1.RevokeTokenRequest"> & {
  * Use `create(RevokeTokenRequestSchema)` to create a new message.
  */
 export const RevokeTokenRequestSchema: GenMessage<RevokeTokenRequest> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 9);
+  messageDesc(file_pinix_v1_pinix, 12);
 
 /**
  * @generated from message pinix.v1.RevokeTokenResponse
@@ -205,7 +295,7 @@ export type RevokeTokenResponse = Message<"pinix.v1.RevokeTokenResponse"> & {
  * Use `create(RevokeTokenResponseSchema)` to create a new message.
  */
 export const RevokeTokenResponseSchema: GenMessage<RevokeTokenResponse> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 10);
+  messageDesc(file_pinix_v1_pinix, 13);
 
 /**
  * @generated from message pinix.v1.InvokeRequest
@@ -232,7 +322,7 @@ export type InvokeRequest = Message<"pinix.v1.InvokeRequest"> & {
  * Use `create(InvokeRequestSchema)` to create a new message.
  */
 export const InvokeRequestSchema: GenMessage<InvokeRequest> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 11);
+  messageDesc(file_pinix_v1_pinix, 14);
 
 /**
  * @generated from message pinix.v1.InvokeResponse
@@ -259,35 +349,35 @@ export type InvokeResponse = Message<"pinix.v1.InvokeResponse"> & {
  * Use `create(InvokeResponseSchema)` to create a new message.
  */
 export const InvokeResponseSchema: GenMessage<InvokeResponse> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 12);
+  messageDesc(file_pinix_v1_pinix, 15);
 
 /**
  * @generated from message pinix.v1.ReadFileRequest
  */
 export type ReadFileRequest = Message<"pinix.v1.ReadFileRequest"> & {
   /**
-   * 相对 workdir: "web/index.html", "data/voice.mp3"
+   * relative to workdir: "web/index.html", "data/voice.mp3"
    *
    * @generated from field: string path = 1;
    */
   path: string;
 
   /**
-   * 字节偏移，0 = 从头
+   * byte offset, 0 = from start
    *
    * @generated from field: int64 offset = 2;
    */
   offset: bigint;
 
   /**
-   * 请求字节数，0 = 到末尾
+   * requested bytes, 0 = to end
    *
    * @generated from field: int64 length = 3;
    */
   length: bigint;
 
   /**
-   * 客户端持有的 ETag
+   * client-held ETag
    *
    * @generated from field: string if_none_match = 4;
    */
@@ -299,50 +389,38 @@ export type ReadFileRequest = Message<"pinix.v1.ReadFileRequest"> & {
  * Use `create(ReadFileRequestSchema)` to create a new message.
  */
 export const ReadFileRequestSchema: GenMessage<ReadFileRequest> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 13);
+  messageDesc(file_pinix_v1_pinix, 16);
 
 /**
  * @generated from message pinix.v1.ReadFileChunk
  */
 export type ReadFileChunk = Message<"pinix.v1.ReadFileChunk"> & {
   /**
-   * 本 chunk 数据
-   *
    * @generated from field: bytes data = 1;
    */
   data: Uint8Array;
 
   /**
-   * 本 chunk 在文件中的起始偏移
-   *
    * @generated from field: int64 offset = 2;
    */
   offset: bigint;
 
   /**
-   * 每个 chunk 都携带（Go 服务端用 mime.TypeByExtension 推断）
-   *
    * @generated from field: string mime_type = 3;
    */
   mimeType: string;
 
   /**
-   * 文件总大小，每个 chunk 都携带
-   *
    * @generated from field: int64 total_size = 4;
    */
   totalSize: bigint;
 
   /**
-   * 文件当前 ETag
-   *
    * @generated from field: string etag = 5;
    */
   etag: string;
 
   /**
-   * true = 内容未变，客户端用本地缓存
-   *
    * @generated from field: bool not_modified = 6;
    */
   notModified: boolean;
@@ -353,19 +431,64 @@ export type ReadFileChunk = Message<"pinix.v1.ReadFileChunk"> & {
  * Use `create(ReadFileChunkSchema)` to create a new message.
  */
 export const ReadFileChunkSchema: GenMessage<ReadFileChunk> = /*@__PURE__*/
-  messageDesc(file_pinix_v1_pinix, 14);
+  messageDesc(file_pinix_v1_pinix, 17);
 
 /**
- * ─── PinixService ──────────────────────────────────────────────
- * Super Agent Token 持有者使用，拥有整机权限
- *
- * @generated from service pinix.v1.PinixService
+ * @generated from message pinix.v1.GetInfoRequest
  */
-export const PinixService: GenService<{
+export type GetInfoRequest = Message<"pinix.v1.GetInfoRequest"> & {
+};
+
+/**
+ * Describes the message pinix.v1.GetInfoRequest.
+ * Use `create(GetInfoRequestSchema)` to create a new message.
+ */
+export const GetInfoRequestSchema: GenMessage<GetInfoRequest> = /*@__PURE__*/
+  messageDesc(file_pinix_v1_pinix, 18);
+
+/**
+ * @generated from message pinix.v1.GetInfoResponse
+ */
+export type GetInfoResponse = Message<"pinix.v1.GetInfoResponse"> & {
   /**
-   * 管理 Clip
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string description = 2;
+   */
+  description: string;
+
+  /**
+   * @generated from field: repeated string commands = 3;
+   */
+  commands: string[];
+
+  /**
+   * @generated from field: bool has_web = 4;
+   */
+  hasWeb: boolean;
+};
+
+/**
+ * Describes the message pinix.v1.GetInfoResponse.
+ * Use `create(GetInfoResponseSchema)` to create a new message.
+ */
+export const GetInfoResponseSchema: GenMessage<GetInfoResponse> = /*@__PURE__*/
+  messageDesc(file_pinix_v1_pinix, 19);
+
+/**
+ * ─── AdminService ─────────────────────────────────────────────
+ * Super Token holders only. Manages clips and tokens on the server.
+ *
+ * @generated from service pinix.v1.AdminService
+ */
+export const AdminService: GenService<{
+  /**
+   * Clip management
    *
-   * @generated from rpc pinix.v1.PinixService.CreateClip
+   * @generated from rpc pinix.v1.AdminService.CreateClip
    */
   createClip: {
     methodKind: "unary";
@@ -373,7 +496,7 @@ export const PinixService: GenService<{
     output: typeof CreateClipResponseSchema;
   },
   /**
-   * @generated from rpc pinix.v1.PinixService.ListClips
+   * @generated from rpc pinix.v1.AdminService.ListClips
    */
   listClips: {
     methodKind: "unary";
@@ -381,7 +504,7 @@ export const PinixService: GenService<{
     output: typeof ListClipsResponseSchema;
   },
   /**
-   * @generated from rpc pinix.v1.PinixService.DeleteClip
+   * @generated from rpc pinix.v1.AdminService.DeleteClip
    */
   deleteClip: {
     methodKind: "unary";
@@ -389,9 +512,9 @@ export const PinixService: GenService<{
     output: typeof DeleteClipResponseSchema;
   },
   /**
-   * 管理 Token
+   * Token management
    *
-   * @generated from rpc pinix.v1.PinixService.GenerateToken
+   * @generated from rpc pinix.v1.AdminService.GenerateToken
    */
   generateToken: {
     methodKind: "unary";
@@ -399,7 +522,15 @@ export const PinixService: GenService<{
     output: typeof GenerateTokenResponseSchema;
   },
   /**
-   * @generated from rpc pinix.v1.PinixService.RevokeToken
+   * @generated from rpc pinix.v1.AdminService.ListTokens
+   */
+  listTokens: {
+    methodKind: "unary";
+    input: typeof ListTokensRequestSchema;
+    output: typeof ListTokensResponseSchema;
+  },
+  /**
+   * @generated from rpc pinix.v1.AdminService.RevokeToken
    */
   revokeToken: {
     methodKind: "unary";
@@ -410,14 +541,14 @@ export const PinixService: GenService<{
   serviceDesc(file_pinix_v1_pinix, 0);
 
 /**
- * ─── ClipService ───────────────────────────────────────────────
- * Clip Token 持有者使用，权限绑定特定 workdir
+ * ─── ClipService ──────────────────────────────────────────────
+ * Clip Token holders. Scoped to a single clip's workdir.
  *
  * @generated from service pinix.v1.ClipService
  */
 export const ClipService: GenService<{
   /**
-   * 执行 commands/ 下的可执行文件
+   * Execute a command script under commands/
    *
    * @generated from rpc pinix.v1.ClipService.Invoke
    */
@@ -427,7 +558,7 @@ export const ClipService: GenService<{
     output: typeof InvokeResponseSchema;
   },
   /**
-   * 流式读取 workdir 下的文件
+   * Stream-read a file under web/ or data/
    *
    * @generated from rpc pinix.v1.ClipService.ReadFile
    */
@@ -435,6 +566,16 @@ export const ClipService: GenService<{
     methodKind: "server_streaming";
     input: typeof ReadFileRequestSchema;
     output: typeof ReadFileChunkSchema;
+  },
+  /**
+   * Return clip metadata (name, description, commands, has_web)
+   *
+   * @generated from rpc pinix.v1.ClipService.GetInfo
+   */
+  getInfo: {
+    methodKind: "unary";
+    input: typeof GetInfoRequestSchema;
+    output: typeof GetInfoResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_pinix_v1_pinix, 1);
