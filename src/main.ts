@@ -333,6 +333,12 @@ app.whenReady().then(() => {
   ipcMain.handle("launcher:open-clip", (_event, config: unknown) => {
     if (!isClipConfig(config)) throw new Error("invalid ClipConfig");
     try {
+      // 已开则聚焦，避免重复创建同 session 导致 scheme handler 冲突
+      const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.getTitle() === config.alias);
+      if (existing) {
+        existing.focus();
+        return;
+      }
       // 从磁盘读取最新 windowState，合并进 config（Launcher 持有的是启动时快照）
       const saved = readClips().find(c => c.alias === config.alias);
       const merged: ClipConfig = saved ? { ...config, windowState: saved.windowState } : config;
