@@ -20,6 +20,12 @@ function App() {
   const [form, setForm] = useState({ name: "", server_url: "", token: "" });
   const [clearedName, setClearedName] = useState<string | null>(null);
 
+  // Import 状态
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importParsed, setImportParsed] = useState<ClipBookmark[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+
   useEffect(() => {
     if (window.LauncherBridge) {
       window.LauncherBridge.getClips().then(setClips);
@@ -30,6 +36,40 @@ function App() {
       ]);
     }
   }, []);
+
+  // 实时解析 JSON 输入
+  useEffect(() => {
+    const trimmed = importJson.trim();
+    if (!trimmed) {
+      setImportParsed([]);
+      setImportError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const items: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      const valid = items.every(
+        (item: unknown) =>
+          item !== null &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>).name === "string" &&
+          typeof (item as Record<string, unknown>).server_url === "string" &&
+          typeof (item as Record<string, unknown>).token === "string",
+      );
+
+      if (!valid) {
+        setImportError("Each item must have name, server_url, and token");
+        setImportParsed([]);
+      } else {
+        setImportError(null);
+        setImportParsed(items as ClipBookmark[]);
+      }
+    } catch {
+      setImportError("Invalid JSON");
+      setImportParsed([]);
+    }
+  }, [importJson]);
 
   function openAdd() {
     setEditIndex(-1);
@@ -83,6 +123,23 @@ function App() {
     if (window.LauncherBridge) await window.LauncherBridge.openClip(clips[index]);
   }
 
+  async function handleImport() {
+    const existingNames = new Set(clips.map((c) => c.name));
+    const toAdd = importParsed.filter((item) => !existingNames.has(item.name));
+
+    if (toAdd.length === 0) {
+      setImportDialogOpen(false);
+      setImportJson("");
+      return;
+    }
+
+    const next = [...clips, ...toAdd];
+    if (window.LauncherBridge) await window.LauncherBridge.saveClips(next);
+    setClips(next);
+    setImportDialogOpen(false);
+    setImportJson("");
+  }
+
   // 从 server_url 提取显示用的 host 信息
   function displayUrl(url: string): string {
     try {
@@ -105,12 +162,23 @@ function App() {
             >
               Clip Dock
             </h1>
-            <button
-              onClick={openAdd}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
-            >
-              + New Clip
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setImportJson("");
+                  setImportDialogOpen(true);
+                }}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
+              >
+                Import
+              </button>
+              <button
+                onClick={openAdd}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border hover:decoration-foreground"
+              >
+                + New Clip
+              </button>
+            </div>
           </div>
           <div className="mt-3 h-[2px] bg-foreground" />
           <div className="mt-[2px] h-px bg-foreground" />
@@ -175,7 +243,7 @@ function App() {
         )}
       </div>
 
-      {/* Dialog */}
+      {/* Edit/New Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md rounded-sm border-border bg-background shadow-none">
           <DialogHeader>
@@ -237,6 +305,88 @@ function App() {
               className="text-sm font-medium text-foreground hover:text-muted-foreground transition-colors underline underline-offset-4"
             >
               Save
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="sm:max-w-md rounded-sm border-border bg-background shadow-none">
+          <DialogHeader>
+            <DialogTitle
+              className="text-xl font-normal"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            >
+              Import Bookmark
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                JSON
+              </label>
+              <textarea
+                placeholder={'{"name": "...", "server_url": "...", "token": "..."}'}
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                className="min-h-[120px] w-full border-0 border-b border-border bg-transparent px-0 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground transition-colors resize-none"
+              />
+            </div>
+
+            {/* 预览区 */}
+            <div className="min-h-[40px]">
+              {importError ? (
+                <div className="text-xs text-red-500">{importError}</div>
+              ) : importParsed.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Preview ({importParsed.filter((p) => !clips.some((c) => c.name === p.name)).length} new)
+                  </div>
+                  {importParsed.map((item, i) => {
+                    const exists = clips.some((c) => c.name === item.name);
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-1 last:border-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-foreground">
+                            {item.name}
+                          </div>
+                          <div className="truncate font-mono text-[10px] text-muted-foreground">
+                            {displayUrl(item.server_url)}
+                          </div>
+                        </div>
+                        {exists && (
+                          <span className="shrink-0 text-[10px] italic text-muted-foreground">
+                            already exists
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic">
+                  Paste JSON to preview
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-4 sm:gap-4">
+            <button
+              onClick={() => setImportDialogOpen(false)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 decoration-border"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={importParsed.length === 0 || !!importError}
+              className="text-sm font-medium text-foreground hover:text-muted-foreground transition-colors underline underline-offset-4 disabled:text-muted-foreground/40 disabled:no-underline disabled:cursor-not-allowed"
+            >
+              Import
             </button>
           </DialogFooter>
         </DialogContent>
