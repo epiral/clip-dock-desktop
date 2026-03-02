@@ -1,6 +1,12 @@
 // launcherPreload.ts — Launcher 窗口的 preload
-import type { ClipBookmark } from "./types.js";
+// Electron preload 必须是 CJS 格式，不能有 import/export
 const _electron = require("electron");
+
+interface ClipBookmark {
+  name: string;
+  server_url: string;
+  token: string;
+}
 
 function isClipBookmark(v: unknown): v is ClipBookmark {
   if (typeof v !== "object" || v === null) return false;
