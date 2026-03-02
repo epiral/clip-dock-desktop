@@ -707,6 +707,7 @@ app.whenReady().then(() => {
       const decoder = new TextDecoder();
 
       (async () => {
+        let doneEmitted = false;
         try {
           for await (const chunk of entry.client.invoke(req)) {
             if (event.sender.isDestroyed()) return;
@@ -728,12 +729,17 @@ app.whenReady().then(() => {
                 );
                 break;
               case "exitCode":
+                doneEmitted = true;
                 event.sender.send("pinix:stream-done", streamId, chunk.payload.value);
                 break;
             }
           }
+          // Fallback: guarantee stream-done even if exitCode chunk was missing
+          if (!doneEmitted && !event.sender.isDestroyed()) {
+            event.sender.send("pinix:stream-done", streamId, 0);
+          }
         } catch (err) {
-          if (!event.sender.isDestroyed()) {
+          if (!doneEmitted && !event.sender.isDestroyed()) {
             const message = err instanceof Error ? err.message : "unknown error";
             event.sender.send("pinix:stream-done", streamId, -1, message);
           }
