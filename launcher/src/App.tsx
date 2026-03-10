@@ -39,6 +39,8 @@ function App() {
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [addingClips, setAddingClips] = useState<Set<string>>(new Set());
   const [addedClips, setAddedClips] = useState<Set<string>>(new Set());
+  // The server context used for the current discover session (local or remote)
+  const [discoverServer, setDiscoverServer] = useState({ url: "", token: "" });
 
   // Remote server form
   const [remoteUrl, setRemoteUrl] = useState("");
@@ -171,11 +173,14 @@ function App() {
   // Discover clips from local server
   async function handleDiscover() {
     if (!env?.superToken || !env.serverUrl) return;
+    const server = { url: env.serverUrl, token: env.superToken };
+    setDiscoverServer(server);
     setView("discover");
     setDiscoverLoading(true);
     setDiscoverError(null);
+    setAddedClips(new Set());
     try {
-      const found = await window.LauncherBridge.discoverClips(env.serverUrl, env.superToken);
+      const found = await window.LauncherBridge.discoverClips(server.url, server.token);
       setDiscoveredClips(found);
     } catch (err: any) {
       setDiscoverError(err.message);
@@ -187,13 +192,14 @@ function App() {
   // Discover from remote server
   async function handleRemoteConnect() {
     if (!remoteUrl.trim() || !remoteToken.trim()) return;
+    const server = { url: remoteUrl.trim(), token: remoteToken.trim() };
     setRemoteConnecting(true);
     setRemoteError(null);
     try {
-      const found = await window.LauncherBridge.discoverClips(remoteUrl.trim(), remoteToken.trim());
+      const found = await window.LauncherBridge.discoverClips(server.url, server.token);
       setDiscoveredClips(found);
-      // Store for addClipBookmark calls
-      setEnv(prev => prev ? { ...prev, serverUrl: remoteUrl.trim(), superToken: remoteToken.trim() } : prev);
+      setDiscoverServer(server);
+      setAddedClips(new Set());
       setView("discover");
     } catch (err: any) {
       setRemoteError(err.message);
@@ -203,10 +209,10 @@ function App() {
   }
 
   async function handleAddClip(clip: DiscoveredClip) {
-    if (!env) return;
+    if (!discoverServer.url || !discoverServer.token) return;
     setAddingClips(prev => new Set(prev).add(clip.clipId));
     try {
-      await window.LauncherBridge.addClipBookmark(env.serverUrl, env.superToken, clip.clipId);
+      await window.LauncherBridge.addClipBookmark(discoverServer.url, discoverServer.token, clip.clipId);
       setAddedClips(prev => new Set(prev).add(clip.clipId));
       await loadClips();
     } catch (err: any) {
@@ -251,7 +257,7 @@ function App() {
             <div className="mt-3 h-[2px] bg-foreground" />
             <div className="mt-[2px] h-px bg-foreground" />
             <p className="mt-3 text-xs text-muted-foreground">
-              {env?.serverUrl ? displayUrl(env.serverUrl) : ""}
+              {discoverServer.url ? displayUrl(discoverServer.url) : ""}
             </p>
           </header>
 
