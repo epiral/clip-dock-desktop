@@ -31,6 +31,8 @@ interface LauncherBridge {
   addClipBookmark(serverUrl: string, superToken: string, clipId: string): Promise<ClipBookmark>;
   startBoxLite(binaryPath: string): Promise<{ ok: boolean; error?: string }>;
   startPinix(binaryPath: string): Promise<{ ok: boolean; error?: string }>;
+  installBundle(): Promise<{ ok: boolean; error?: string }>;
+  hasBundle(): Promise<boolean>;
 }
 
 interface Window {

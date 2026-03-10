@@ -52,6 +52,12 @@ const LauncherBridge = Object.freeze({
 
   startPinix: (binaryPath: string) =>
     _electron.ipcRenderer.invoke("launcher:start-pinix", binaryPath),
+
+  installBundle: () =>
+    _electron.ipcRenderer.invoke("launcher:install-bundle"),
+
+  hasBundle: () =>
+    _electron.ipcRenderer.invoke("launcher:has-bundle"),
 });
 
 _electron.contextBridge.exposeInMainWorld("LauncherBridge", LauncherBridge);

@@ -59,6 +59,14 @@
       "dist/**/*",
       "launcher/dist/**/*"
     ],
+    "extraResources": [
+      { "from": "vendor/pinix", "to": "bin/pinix" },
+      { "from": "vendor/boxlite", "to": "bin/boxlite" },
+      { "from": "vendor/boxlite-shim", "to": "bin/boxlite-shim" },
+      { "from": "vendor/boxlite-guest", "to": "bin/boxlite-guest" },
+      { "from": "vendor/libkrunfw.5.dylib", "to": "bin/libkrunfw.5.dylib" },
+      { "from": "vendor/rootfs.ext4", "to": "rootfs/rootfs.ext4" }
+    ],
     "protocols": [
       { "name": "Pinix Web", "schemes": ["pinix-web"] },
       { "name": "Pinix Data", "schemes": ["pinix-data"] }

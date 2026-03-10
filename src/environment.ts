@@ -1,9 +1,18 @@
 // environment.ts — Detect Pinix Server & BoxLite, discover clips, start services
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, copyFileSync, mkdirSync, chmodSync } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
+
+// --- Bundled resources path (inside .app/Contents/Resources) ---
+function bundledPath(...parts: string[]): string {
+  // In packaged app: process.resourcesPath = .app/Contents/Resources
+  // In dev: falls back to cwd
+  const base = (process as any).resourcesPath || path.join(process.cwd(), "vendor");
+  return path.join(base, ...parts);
+}
+
 // --- Types ---
 
 export interface EnvStatus {
@@ -25,18 +34,24 @@ export interface DiscoveredClip {
 
 // --- Detection ---
 
-const BOXLITE_PATHS = [
-  path.join(homedir(), "bin", "boxlite"),
-  path.join(homedir(), ".boxlite", "bin", "boxlite"),
-  path.join(homedir(), ".local", "bin", "boxlite"),
-  "/usr/local/bin/boxlite",
-];
+function boxlitePaths(): string[] {
+  return [
+    path.join(homedir(), "bin", "boxlite"),
+    path.join(homedir(), ".boxlite", "bin", "boxlite"),
+    path.join(homedir(), ".local", "bin", "boxlite"),
+    "/usr/local/bin/boxlite",
+    bundledPath("bin", "boxlite"),
+  ];
+}
 
-const PINIX_PATHS = [
-  path.join(homedir(), "bin", "pinix"),
-  path.join(homedir(), ".local", "bin", "pinix"),
-  "/usr/local/bin/pinix",
-];
+function pinixPaths(): string[] {
+  return [
+    path.join(homedir(), "bin", "pinix"),
+    path.join(homedir(), ".local", "bin", "pinix"),
+    "/usr/local/bin/pinix",
+    bundledPath("bin", "pinix"),
+  ];
+}
 
 const PINIX_CONFIG = path.join(homedir(), ".config", "pinix", "config.yaml");
 const DEFAULT_SERVER_URL = "http://localhost:9875";
@@ -83,8 +98,8 @@ async function checkHttp(url: string, timeoutMs = 3000): Promise<boolean> {
 }
 
 export async function detectEnvironment(serverUrl?: string): Promise<EnvStatus> {
-  const boxlitePath = findBinary(BOXLITE_PATHS);
-  const pinixPath = findBinary(PINIX_PATHS);
+  const boxlitePath = findBinary(boxlitePaths());
+  const pinixPath = findBinary(pinixPaths());
   const config = readPinixConfig();
   const url = serverUrl || config.serverUrl;
 
@@ -113,6 +128,43 @@ export async function detectEnvironment(serverUrl?: string): Promise<EnvStatus> 
     serverUrl: url,
     superToken: config.superToken,
   };
+}
+
+// --- Install from bundle ---
+
+export async function installFromBundle(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const binDir = path.join(homedir(), "bin");
+    const rootfsDir = path.join(homedir(), ".boxlite", "rootfs");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(rootfsDir, { recursive: true });
+
+    // Copy binaries
+    const bins = ["pinix", "boxlite", "boxlite-shim", "boxlite-guest", "libkrunfw.5.dylib"];
+    for (const name of bins) {
+      const src = bundledPath("bin", name);
+      const dst = path.join(binDir, name);
+      if (existsSync(src) && !existsSync(dst)) {
+        copyFileSync(src, dst);
+        chmodSync(dst, 0o755);
+      }
+    }
+
+    // Copy rootfs
+    const rootfsSrc = bundledPath("rootfs", "rootfs.ext4");
+    const rootfsDst = path.join(rootfsDir, "rootfs.ext4");
+    if (existsSync(rootfsSrc) && !existsSync(rootfsDst)) {
+      copyFileSync(rootfsSrc, rootfsDst);
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+}
+
+export function hasBundledBinaries(): boolean {
+  return existsSync(bundledPath("bin", "pinix")) && existsSync(bundledPath("bin", "boxlite"));
 }
 
 // --- Clip Discovery ---

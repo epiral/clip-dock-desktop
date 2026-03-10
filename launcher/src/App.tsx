@@ -71,6 +71,9 @@ function App() {
   useEffect(() => {
     loadClips();
     checkEnv();
+    if (window.LauncherBridge?.hasBundle) {
+      window.LauncherBridge.hasBundle().then(setHasBundle);
+    }
   }, [loadClips, checkEnv]);
 
   // Import JSON parse
@@ -139,6 +142,22 @@ function App() {
 
   const [starting, setStarting] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  const [hasBundle, setHasBundle] = useState(false);
+  const [installing, setInstalling] = useState(false);
+
+  async function handleInstallBundle() {
+    setInstalling(true);
+    setStartError(null);
+    try {
+      const result = await window.LauncherBridge.installBundle();
+      if (!result.ok) setStartError(`Install: ${result.error}`);
+      await checkEnv();
+    } catch (err: any) {
+      setStartError(err.message);
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   async function handleStartBoxLite() {
     if (!env?.boxlitePath) return;
@@ -409,6 +428,12 @@ function App() {
                   </button>
                 )}
               </div>
+              {(env.boxlite === "not_installed" || env.pinix === "not_installed") && hasBundle && (
+                <button onClick={handleInstallBundle} disabled={installing}
+                  className="mt-1 flex items-center gap-1.5 text-[10px] text-foreground hover:text-muted-foreground transition-colors underline underline-offset-2">
+                  {installing ? "Installing..." : "Install Pinix + BoxLite from bundle"}
+                </button>
+              )}
               {startError && <div className="text-[10px] text-red-500 mt-1">{startError}</div>}
             </div>
 

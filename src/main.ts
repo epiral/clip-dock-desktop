@@ -12,7 +12,7 @@ import { registerSchemes, registerClipSchemeHandlers, createClipClient, clearCli
 import { loadClip } from "./loader.js";
 import { readClips, writeClips } from "./clipsStore.js";
 import type { ClipBookmark } from "./types.js";
-import { detectEnvironment, discoverClips, generateBookmark, startBoxLite, startPinix } from "./environment.js";
+import { detectEnvironment, discoverClips, generateBookmark, startBoxLite, startPinix, installFromBundle, hasBundledBinaries } from "./environment.js";
 
 function isClipBookmark(v: unknown): v is ClipBookmark {
   if (typeof v !== "object" || v === null) return false;
@@ -778,6 +778,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle("launcher:discover-clips", async (_event, serverUrl: string, superToken: string) => {
     return discoverClips(serverUrl, superToken);
+  });
+
+  ipcMain.handle("launcher:install-bundle", async () => {
+    return installFromBundle();
+  });
+
+  ipcMain.handle("launcher:has-bundle", async () => {
+    return hasBundledBinaries();
   });
 
   ipcMain.handle("launcher:start-boxlite", async (_event, binaryPath: string) => {
