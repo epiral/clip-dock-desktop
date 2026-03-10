@@ -1,58 +1,120 @@
-# clip-dock-desktop
+# Clip Dock
 
-Clip Dock 桌面端实现 — Pinix 生态的聚合客户端，通过 Connect-RPC 桥接 pinix daemon。
+**agents, assembled.**
 
-## 架构
+The desktop client for [Pinix](https://github.com/epiral/pinix) — discover, connect, and use Clips from any Pinix Server.
+
+[![Release](https://img.shields.io/github/v/release/epiral/clip-dock-desktop?color=blue)](https://github.com/epiral/clip-dock-desktop/releases)
+
+## Install
+
+Download the DMG from [GitHub Releases](https://github.com/epiral/clip-dock-desktop/releases).
+
+The DMG bundles Pinix Server + BoxLite + rootfs. On first launch, click **"Install from bundle"** to set up the runtime automatically.
+
+## Features
+
+### Environment Detection
+
+Automatically detects BoxLite and Pinix Server status:
+
+- **Running** — green indicator
+- **Installed but not running** — yellow indicator + Start button
+- **Not installed** — red indicator + Install from bundle
+
+### Clip Discovery
+
+Connect to any Pinix Server and discover available Clips:
+
+- **Local server** — auto-reads super token from `~/.config/pinix/config.yaml`
+- **Remote server** — enter Server URL + Super Token manually
+
+One-click to generate a Clip Token and add as a Bookmark.
+
+### Multi-Window
+
+Each Clip opens in its own window with isolated session. Clips communicate via `commands/` (Invoke RPC) and serve UI via `web/` (ReadFile RPC).
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│  Electron Main Process                       │
-│                                              │
-│  ┌──────────┐  ┌───────────────────────────┐ │
-│  │ main.ts  │  │ bridge.ts                 │ │
-│  │ IPC      │  │ pinix-web:// → ReadFile   │ │
-│  │ handler  │  │ pinix-data:// → ReadFile  │ │
-│  └──────────┘  └───────────────────────────┘ │
-│       │              │                        │
-│       │   Connect-RPC (HTTP/2)               │
-│       └──────────┬───┘                        │
-│                  ▼                            │
-│         pinix daemon :5005                   │
-│         ClipService.Invoke                   │
-│         ClipService.ReadFile (streaming)     │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  Electron Main Process                   │
+│                                          │
+│  main.ts          bridge.ts              │
+│  ├─ Launcher UI   ├─ pinix-web://       │
+│  ├─ IPC handlers  ├─ pinix-data://      │
+│  ├─ Env detection └─ Connect-RPC        │
+│  └─ Clip windows       │                │
+│                         ▼                │
+│                  Pinix Server :9875      │
+│                  ├─ ClipService.Invoke   │
+│                  └─ ClipService.ReadFile │
+└─────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────┐
-│  Renderer (WebView)                          │
-│                                              │
-│  - 加载 pinix-web://{clipId}/index.html     │
-│  - 通过 Bridge.invoke() 执行写操作          │
-│  - 所有读请求通过 scheme 拦截                │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  Renderer (per Clip)                     │
+│                                          │
+│  Loads pinix-web://{clip}/index.html    │
+│  Calls Bridge.invoke() for mutations   │
+│  All reads via scheme interception      │
+└─────────────────────────────────────────┘
 ```
 
-## 目录结构
+## Directory Structure
 
-| 路径 | 说明 |
-|------|------|
-| `src/` | 主进程 TypeScript 源码（main.ts、bridge.ts、loader.ts 等） |
-| `launcher/` | Launcher React UI 子项目（Vite + React） |
-| `dist/` | `pnpm build` 的编译产物（已 gitignore） |
+| Path | Description |
+|------|-------------|
+| `src/` | Main process (main.ts, bridge.ts, environment.ts, loader.ts) |
+| `launcher/` | Launcher React UI (Vite + React + shadcn) |
+| `build/` | Packaging config (entitlements) |
+| `vendor/` | Bundled binaries (gitignored) |
+| `dist/` | Build output (gitignored) |
 
-## 开发
+## Development
 
 ```bash
 pnpm install
-pnpm generate   # proto → TypeScript
-pnpm build      # tsc 编译
-pnpm dev        # generate + build + 启动 electron
-bash dev.sh     # 开发模式（watch + 自动重启）
-bash dev-remote.sh  # 连接远端 Pinix Server 的开发模式
+cd launcher && pnpm install && cd ..
+
+# Dev mode
+pnpm dev
+
+# Build + Package DMG
+pnpm run pack
+
+# Watch mode (auto-restart on changes)
+bash dev.sh
 ```
 
-## 设计原则
+## Packaging
 
-- WebView 永远不直接 fetch localhost，所有请求通过 scheme 拦截
-- `Bridge.invoke` 是唯一的写操作入口
-- ReadFile streaming：每个 chunk 携带 offset, mime_type, total_size
-- Connect 协议 + HTTP/2
+```bash
+# Prepare vendor/ (binaries + rootfs)
+mkdir -p vendor
+cp ~/bin/pinix ~/bin/boxlite ~/bin/boxlite-shim vendor/
+cp ~/Developer/epiral/repos/boxlite/target/aarch64-unknown-linux-musl/release/boxlite-guest vendor/
+cp ~/Developer/epiral/repos/boxlite/target/release/build/*/out/runtime/libkrunfw.5.dylib vendor/
+gzip -9 -c ~/.boxlite/rootfs/*.ext4 > vendor/rootfs.ext4.gz
+
+# Build DMG (signed with Developer ID Application)
+pnpm run pack
+# Output: dist/Clip Dock-1.0.0-arm64.dmg
+```
+
+## Debug Server
+
+In dev mode, a debug HTTP server runs on `localhost:9876`:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /windows` | List all windows |
+| `GET /screenshot` | Capture window as PNG |
+| `GET /snapshot` | Semantic DOM tree with refs |
+| `POST /click` | Click element by ref |
+| `POST /fill` | Fill input by ref |
+| `POST /eval` | Execute JavaScript |
+| `POST /scroll` | Scroll page |
+| `POST /resize` | Resize window |
+
+Use `?alias=<title>` to target a specific window.
