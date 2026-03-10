@@ -6,6 +6,8 @@ The desktop client for [Pinix](https://github.com/epiral/pinix) — discover, co
 
 [![Release](https://img.shields.io/github/v/release/epiral/clip-dock-desktop?color=blue)](https://github.com/epiral/clip-dock-desktop/releases)
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 ## Install
 
 Download the DMG from [GitHub Releases](https://github.com/epiral/clip-dock-desktop/releases).
