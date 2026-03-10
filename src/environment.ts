@@ -1,5 +1,7 @@
 // environment.ts — Detect Pinix Server & BoxLite, discover clips, start services
-import { readFileSync, existsSync, copyFileSync, mkdirSync, chmodSync } from "node:fs";
+import { readFileSync, existsSync, copyFileSync, mkdirSync, chmodSync, createReadStream, createWriteStream } from "node:fs";
+import { createGunzip } from "node:zlib";
+import { pipeline } from "node:stream/promises";
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
 import { homedir } from "node:os";
@@ -150,11 +152,15 @@ export async function installFromBundle(): Promise<{ ok: boolean; error?: string
       }
     }
 
-    // Copy rootfs
-    const rootfsSrc = bundledPath("rootfs", "rootfs.ext4");
+    // Decompress rootfs (gzipped in bundle)
+    const rootfsGz = bundledPath("rootfs", "rootfs.ext4.gz");
     const rootfsDst = path.join(rootfsDir, "rootfs.ext4");
-    if (existsSync(rootfsSrc) && !existsSync(rootfsDst)) {
-      copyFileSync(rootfsSrc, rootfsDst);
+    if (existsSync(rootfsGz) && !existsSync(rootfsDst)) {
+      await pipeline(
+        createReadStream(rootfsGz),
+        createGunzip(),
+        createWriteStream(rootfsDst),
+      );
     }
 
     return { ok: true };

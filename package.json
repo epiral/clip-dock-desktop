@@ -57,7 +57,9 @@
     },
     "files": [
       "dist/**/*",
-      "launcher/dist/**/*"
+      "launcher/dist/**/*",
+      "!launcher/node_modules/**/*",
+      "!launcher/src/**/*"
     ],
     "extraResources": [
       { "from": "vendor/pinix", "to": "bin/pinix" },
@@ -65,7 +67,7 @@
       { "from": "vendor/boxlite-shim", "to": "bin/boxlite-shim" },
       { "from": "vendor/boxlite-guest", "to": "bin/boxlite-guest" },
       { "from": "vendor/libkrunfw.5.dylib", "to": "bin/libkrunfw.5.dylib" },
-      { "from": "vendor/rootfs.ext4", "to": "rootfs/rootfs.ext4" }
+      { "from": "vendor/rootfs.ext4.gz", "to": "rootfs/rootfs.ext4.gz" }
     ],
     "protocols": [
       { "name": "Pinix Web", "schemes": ["pinix-web"] },
