@@ -12,6 +12,7 @@ import { registerSchemes, registerClipSchemeHandlers, createClipClient, clearCli
 import { loadClip } from "./loader.js";
 import { readClips, writeClips } from "./clipsStore.js";
 import type { ClipBookmark } from "./types.js";
+import { detectEnvironment, discoverClips, generateBookmark, startBoxLite, startPinix } from "./environment.js";
 
 function isClipBookmark(v: unknown): v is ClipBookmark {
   if (typeof v !== "object" || v === null) return false;
@@ -572,7 +573,29 @@ function startDebugServer() {
       if (!res.headersSent) fail(500, msg);
     }
   });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn("[debug] port 9876 in use, debug server disabled");
+    } else {
+      console.error("[debug] server error:", err);
+    }
+  });
   server.listen(9876, "127.0.0.1", () => console.log("[debug] http://localhost:9876"));
+}
+
+// Single instance lock — second instance focuses the existing window
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const wins = BrowserWindow.getAllWindows();
+    const launcher = wins.find(w => w.getTitle() === "agents, assembled.");
+    if (launcher) {
+      if (launcher.isMinimized()) launcher.restore();
+      launcher.focus();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -747,6 +770,34 @@ app.whenReady().then(() => {
       })();
     }
   );
+
+  // --- Environment detection IPC ---
+  ipcMain.handle("launcher:detect-env", async (_event, serverUrl?: string) => {
+    return detectEnvironment(serverUrl || undefined);
+  });
+
+  ipcMain.handle("launcher:discover-clips", async (_event, serverUrl: string, superToken: string) => {
+    return discoverClips(serverUrl, superToken);
+  });
+
+  ipcMain.handle("launcher:start-boxlite", async (_event, binaryPath: string) => {
+    return startBoxLite(binaryPath);
+  });
+
+  ipcMain.handle("launcher:start-pinix", async (_event, binaryPath: string) => {
+    return startPinix(binaryPath);
+  });
+
+  ipcMain.handle("launcher:add-bookmark", async (_event, serverUrl: string, superToken: string, clipId: string) => {
+    const bookmark = await generateBookmark(serverUrl, superToken, clipId);
+    const clips = readClips();
+    // Don't add duplicates
+    if (!clips.some(c => c.name === bookmark.name && c.server_url === bookmark.server_url)) {
+      clips.push(bookmark);
+      writeClips(clips);
+    }
+    return bookmark;
+  });
 
   // 启动 Launcher
   createLauncherWindow();

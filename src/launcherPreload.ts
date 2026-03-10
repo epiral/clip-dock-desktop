@@ -36,6 +36,22 @@ const LauncherBridge = Object.freeze({
     }
     return _electron.ipcRenderer.invoke("pinix:clear-cache", name);
   },
+
+  // --- Environment detection ---
+  detectEnvironment: (serverUrl?: string) =>
+    _electron.ipcRenderer.invoke("launcher:detect-env", serverUrl),
+
+  discoverClips: (serverUrl: string, superToken: string) =>
+    _electron.ipcRenderer.invoke("launcher:discover-clips", serverUrl, superToken),
+
+  addClipBookmark: (serverUrl: string, superToken: string, clipId: string) =>
+    _electron.ipcRenderer.invoke("launcher:add-bookmark", serverUrl, superToken, clipId),
+
+  startBoxLite: (binaryPath: string) =>
+    _electron.ipcRenderer.invoke("launcher:start-boxlite", binaryPath),
+
+  startPinix: (binaryPath: string) =>
+    _electron.ipcRenderer.invoke("launcher:start-pinix", binaryPath),
 });
 
 _electron.contextBridge.exposeInMainWorld("LauncherBridge", LauncherBridge);
