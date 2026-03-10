@@ -1,21 +1,24 @@
 {
   "name": "clip-dock-desktop",
   "version": "1.0.0",
-  "description": "",
+  "description": "Clip Dock — agents, assembled.",
   "main": "dist/main.js",
   "scripts": {
     "generate": "buf generate",
     "build": "tsc",
+    "build:launcher": "cd launcher && pnpm build",
     "dev": "pnpm generate && pnpm build && electron dist/main.js",
-    "watch": "bash dev.sh"
+    "watch": "bash dev.sh",
+    "pack": "pnpm build && pnpm build:launcher && electron-builder --mac --publish never"
   },
   "keywords": [],
-  "author": "",
+  "author": "Epiral <hi@epiral.dev>",
   "license": "ISC",
   "packageManager": "pnpm@10.15.0",
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "^2.11.0",
     "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.9.3"
   },
   "pnpm": {
@@ -28,5 +31,37 @@
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-node": "^2.1.1"
   },
-  "type": "module"
+  "type": "module",
+  "build": {
+    "appId": "dev.epiral.clip-dock",
+    "productName": "Clip Dock",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "identity": "changpeng xu (7MTHK6DGS4)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false,
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] },
+        { "target": "zip", "arch": ["arm64"] }
+      ]
+    },
+    "dmg": {
+      "title": "Clip Dock",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "dist/**/*",
+      "launcher/dist/**/*"
+    ],
+    "protocols": [
+      { "name": "Pinix Web", "schemes": ["pinix-web"] },
+      { "name": "Pinix Data", "schemes": ["pinix-data"] }
+    ]
+  }
 }
