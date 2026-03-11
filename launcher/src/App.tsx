@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Pencil, Trash2, RefreshCw, Check, Circle, Search, Plug, Play } from "lucide-react";
+import { Pencil, Trash2, RefreshCw, Check, Circle, Search, Plug, Play, Copy } from "lucide-react";
 import "@fontsource/playfair-display/400.css";
 import "@fontsource/playfair-display/700.css";
 import "@fontsource/inter/400.css";
@@ -39,6 +39,7 @@ function App() {
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [addingClips, setAddingClips] = useState<Set<string>>(new Set());
   const [addedClips, setAddedClips] = useState<Set<string>>(new Set());
+  const [copiedClips, setCopiedClips] = useState<Set<string>>(new Set());
   // The server context used for the current discover session (local or remote)
   const [discoverServer, setDiscoverServer] = useState({ url: "", token: "" });
 
@@ -241,6 +242,20 @@ function App() {
     }
   }
 
+  async function handleCopyClip(clip: DiscoveredClip) {
+    if (!discoverServer.url || !discoverServer.token) return;
+    try {
+      const bookmark = await window.LauncherBridge.addClipBookmark(discoverServer.url, discoverServer.token, clip.clipId);
+      await navigator.clipboard.writeText(JSON.stringify(bookmark, null, 2));
+      setCopiedClips(prev => new Set(prev).add(clip.clipId));
+      setAddedClips(prev => new Set(prev).add(clip.clipId));
+      await loadClips();
+      setTimeout(() => setCopiedClips(prev => { const next = new Set(prev); next.delete(clip.clipId); return next; }), 2000);
+    } catch (err: any) {
+      console.error("copyClip failed:", err);
+    }
+  }
+
   function displayUrl(url: string): string {
     try { return new URL(url).host; } catch { return url; }
   }
@@ -298,10 +313,16 @@ function App() {
                         {clip.desc && <div className="mt-0.5 text-[11px] text-muted-foreground">{clip.desc}</div>}
                         <div className="flex gap-1.5 mt-1">
                           {clip.hasWeb && <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-muted-foreground border border-border rounded px-1.5 py-0.5">web</span>}
-                          {!clip.online && <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-red-400 border border-red-400/30 rounded px-1.5 py-0.5">offline</span>}
+                          {clip.online
+                            ? <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-green-500 border border-green-500/30 rounded px-1.5 py-0.5">online</span>
+                            : <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-red-400 border border-red-400/30 rounded px-1.5 py-0.5">offline</span>
+                          }
                         </div>
                       </div>
-                      <div className="ml-4 shrink-0 pt-1">
+                      <div className="ml-4 shrink-0 pt-1 flex items-center gap-3">
+                        <button onClick={() => handleCopyClip(clip)} title="Copy bookmark JSON" className="text-muted-foreground hover:text-foreground transition-colors">
+                          {copiedClips.has(clip.clipId) ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
+                        </button>
                         {alreadyAdded ? (
                           <span className="text-xs text-green-500 flex items-center gap-1"><Check className="size-3" /> Added</span>
                         ) : isAdding ? (
