@@ -30,6 +30,8 @@ Connect to any Pinix Server and discover available Clips:
 
 - **Local server** — auto-reads super token from `~/.config/pinix/config.yaml`
 - **Remote server** — enter Server URL + Super Token manually
+- **Online/Offline status** — Edge Clips show `ONLINE` (green) or `OFFLINE` (red) labels
+- **Copy bookmark** — one-click copy bookmark JSON for importing on other devices
 
 One-click to generate a Clip Token and add as a Bookmark.
 
