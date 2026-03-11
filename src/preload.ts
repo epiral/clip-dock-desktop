@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
+// Electron preload 必须是 CJS 格式
+const { contextBridge, ipcRenderer } = require("electron");
 
 const STREAM_CHANNELS = {
   chunk: "pinix:stream-chunk",
