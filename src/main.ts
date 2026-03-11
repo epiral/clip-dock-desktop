@@ -675,7 +675,8 @@ app.whenReady().then(() => {
         });
 
         // 收集 streaming InvokeChunk → 组装兼容的 {stdout, stderr, exitCode}
-        const decoder = new TextDecoder();
+        const stdoutDecoder = new TextDecoder();
+        const stderrDecoder = new TextDecoder();
         const stdoutParts: string[] = [];
         const stderrParts: string[] = [];
         let exitCode = 0;
@@ -683,10 +684,10 @@ app.whenReady().then(() => {
         for await (const chunk of entry.client.invoke(req)) {
           switch (chunk.payload.case) {
             case "stdout":
-              stdoutParts.push(decoder.decode(chunk.payload.value, { stream: true }));
+              stdoutParts.push(stdoutDecoder.decode(chunk.payload.value, { stream: true }));
               break;
             case "stderr":
-              stderrParts.push(decoder.decode(chunk.payload.value, { stream: true }));
+              stderrParts.push(stderrDecoder.decode(chunk.payload.value, { stream: true }));
               break;
             case "exitCode":
               exitCode = chunk.payload.value;
@@ -727,7 +728,8 @@ app.whenReady().then(() => {
         stdin,
       });
 
-      const decoder = new TextDecoder();
+      const stdoutDecoder = new TextDecoder();
+      const stderrDecoder = new TextDecoder();
 
       (async () => {
         let doneEmitted = false;
@@ -739,7 +741,7 @@ app.whenReady().then(() => {
                 event.sender.send(
                   "pinix:stream-chunk",
                   streamId,
-                  decoder.decode(chunk.payload.value, { stream: true }),
+                  stdoutDecoder.decode(chunk.payload.value, { stream: true }),
                   "stdout"
                 );
                 break;
@@ -747,7 +749,7 @@ app.whenReady().then(() => {
                 event.sender.send(
                   "pinix:stream-chunk",
                   streamId,
-                  decoder.decode(chunk.payload.value, { stream: true }),
+                  stderrDecoder.decode(chunk.payload.value, { stream: true }),
                   "stderr"
                 );
                 break;
