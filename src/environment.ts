@@ -1,21 +1,11 @@
-// environment.ts — Detect Pinix Server & BoxLite, discover clips, start services
-import { readFileSync, existsSync, copyFileSync, mkdirSync, chmodSync, createReadStream, createWriteStream } from "node:fs";
-import { createGunzip } from "node:zlib";
-import { pipeline } from "node:stream/promises";
+import { chmodSync, copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import net from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
-
-// --- Bundled resources path (inside .app/Contents/Resources) ---
-function bundledPath(...parts: string[]): string {
-  // In packaged app: process.resourcesPath = .app/Contents/Resources
-  // In dev: falls back to cwd
-  const base = process.resourcesPath || path.join(process.cwd(), "vendor");
-  return path.join(base, ...parts);
-}
-
-// --- Types ---
+import net from "node:net";
+import { pipeline } from "node:stream/promises";
+import { createGunzip } from "node:zlib";
+import type { ClipBookmark } from "./types.js";
 
 export interface EnvStatus {
   boxlite: "not_installed" | "installed" | "running";
@@ -32,9 +22,19 @@ export interface DiscoveredClip {
   description: string;
   commands: string[];
   hasWeb: boolean;
+  online: boolean;
 }
 
-// --- Detection ---
+const PINIX_CONFIG = path.join(homedir(), ".config", "pinix", "config.yaml");
+const DEFAULT_SERVER_URL = "http://localhost:9875";
+const DEFAULT_BOXLITE_REST = "http://localhost:8100";
+const BOXLITE_PORT = 8100;
+const PINIX_PORT = 9875;
+
+function bundledPath(...parts: string[]): string {
+  const base = process.resourcesPath || path.join(process.cwd(), "vendor");
+  return path.join(base, ...parts);
+}
 
 function boxlitePaths(): string[] {
   return [
@@ -55,15 +55,9 @@ function pinixPaths(): string[] {
   ];
 }
 
-const PINIX_CONFIG = path.join(homedir(), ".config", "pinix", "config.yaml");
-const DEFAULT_SERVER_URL = "http://localhost:9875";
-const DEFAULT_BOXLITE_REST = "http://localhost:8100";
-const BOXLITE_PORT = 8100;
-const PINIX_PORT = 9875;
-
 function findBinary(candidates: string[]): string {
-  for (const p of candidates) {
-    if (existsSync(p)) return p;
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
   return "";
 }
@@ -71,11 +65,11 @@ function findBinary(candidates: string[]): string {
 function readPinixConfig(): { superToken: string; serverUrl: string } {
   try {
     const raw = readFileSync(PINIX_CONFIG, "utf-8");
-    // Simple YAML parse: extract super_token value
-    const match = raw.match(/^super_token:\s*(.+)$/m);
+    const superTokenMatch = raw.match(/^super_token:\s*(.+)$/m);
+    const serverUrlMatch = raw.match(/^server_url:\s*(.+)$/m);
     return {
-      superToken: match ? match[1].trim() : "",
-      serverUrl: DEFAULT_SERVER_URL,
+      superToken: superTokenMatch ? superTokenMatch[1].trim() : "",
+      serverUrl: serverUrlMatch ? serverUrlMatch[1].trim() : DEFAULT_SERVER_URL,
     };
   } catch {
     return { superToken: "", serverUrl: DEFAULT_SERVER_URL };
@@ -87,13 +81,13 @@ async function checkHttp(url: string, timeoutMs = 3000): Promise<boolean> {
   try {
     const controller = new AbortController();
     timer = setTimeout(() => controller.abort(), timeoutMs);
-    const resp = await fetch(url, {
+    const response = await fetch(url, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-    return resp.status < 500;
+    return response.status < 500;
   } catch {
     return false;
   } finally {
@@ -101,162 +95,24 @@ async function checkHttp(url: string, timeoutMs = 3000): Promise<boolean> {
   }
 }
 
-export async function detectEnvironment(serverUrl?: string): Promise<EnvStatus> {
-  const boxlitePath = findBinary(boxlitePaths());
-  const pinixPath = findBinary(pinixPaths());
-  const config = readPinixConfig();
-  const url = serverUrl || config.serverUrl;
-
-  // Check BoxLite REST API
-  let boxliteStatus: EnvStatus["boxlite"] = "not_installed";
-  if (boxlitePath) {
-    boxliteStatus = "installed";
-    const running = await checkHttp(DEFAULT_BOXLITE_REST);
-    if (running) boxliteStatus = "running";
-  }
-
-  // Check Pinix Server
-  let pinixStatus: EnvStatus["pinix"] = "not_installed";
-  if (pinixPath) {
-    pinixStatus = "installed";
-    // Try connect to server (AdminService/ListClips requires auth, but even a 401 means server is up)
-    const running = await checkHttp(url + "/pinix.v1.AdminService/ListClips");
-    if (running) pinixStatus = "running";
-  }
-
-  return {
-    boxlite: boxliteStatus,
-    boxlitePath,
-    pinix: pinixStatus,
-    pinixPath,
-    serverUrl: url,
-    superToken: config.superToken,
-  };
-}
-
-// --- Install from bundle ---
-
-export async function installFromBundle(): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const binDir = path.join(homedir(), "bin");
-    const rootfsDir = path.join(homedir(), ".boxlite", "rootfs");
-    mkdirSync(binDir, { recursive: true });
-    mkdirSync(rootfsDir, { recursive: true });
-
-    // Copy binaries
-    const bins = ["pinix", "boxlite", "boxlite-shim", "boxlite-guest", "libkrunfw.5.dylib"];
-    for (const name of bins) {
-      const src = bundledPath("bin", name);
-      const dst = path.join(binDir, name);
-      if (existsSync(src) && !existsSync(dst)) {
-        copyFileSync(src, dst);
-        chmodSync(dst, 0o755);
-      }
-    }
-
-    // Decompress rootfs (gzipped in bundle)
-    const rootfsGz = bundledPath("rootfs", "rootfs.ext4.gz");
-    const rootfsDst = path.join(rootfsDir, "rootfs.ext4");
-    if (existsSync(rootfsGz) && !existsSync(rootfsDst)) {
-      await pipeline(
-        createReadStream(rootfsGz),
-        createGunzip(),
-        createWriteStream(rootfsDst),
-      );
-    }
-
-    return { ok: true };
-  } catch (err: unknown) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-export function hasBundledBinaries(): boolean {
-  return existsSync(bundledPath("bin", "pinix")) && existsSync(bundledPath("bin", "boxlite"));
-}
-
-// --- Clip Discovery ---
-
-export async function discoverClips(serverUrl: string, superToken: string): Promise<DiscoveredClip[]> {
-  const resp = await fetch(serverUrl + "/pinix.v1.AdminService/ListClips", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + superToken,
-    },
-    body: "{}",
-  });
-
-  if (!resp.ok) {
-    throw new Error(`ListClips failed: ${resp.status}`);
-  }
-
-  const data = await resp.json() as { clips?: Array<{
-    clipId: string;
-    name: string;
-    description?: string;
-    commands?: string[];
-    hasWeb?: boolean;
-  }> };
-
-  return (data.clips ?? []).map(c => ({
-    clipId: c.clipId,
-    name: c.name,
-    description: c.description ?? "",
-    commands: c.commands ?? [],
-    hasWeb: c.hasWeb ?? false,
-  }));
-}
-
-// --- Start Services ---
-
 function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once("error", () => resolve(false));
-    server.once("listening", () => { server.close(); resolve(true); });
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
     server.listen(port, "127.0.0.1");
   });
 }
 
-export async function startBoxLite(binaryPath: string): Promise<{ ok: boolean; error?: string }> {
-  if (!binaryPath) return { ok: false, error: "BoxLite binary not found" };
-
-  const free = await isPortFree(BOXLITE_PORT);
-  if (!free) return { ok: false, error: `Port ${BOXLITE_PORT} already in use` };
-
-  return new Promise((resolve) => {
-    const child = spawn(binaryPath, ["serve", "--port", String(BOXLITE_PORT)], {
-      detached: true,
-      stdio: "ignore",
-    });
-
-    child.once("error", (err) => {
-      resolve({ ok: false, error: err.message });
-    });
-
-    child.unref();
-
-    // Wait a moment then check if it started
-    setTimeout(async () => {
-      const running = await checkHttp(DEFAULT_BOXLITE_REST);
-      if (running) {
-        resolve({ ok: true });
-      } else {
-        resolve({ ok: false, error: "BoxLite started but not responding" });
-      }
-    }, 2000);
-  });
+async function waitForService(url: string, errorMessage: string): Promise<{ ok: boolean; error?: string }> {
+  const running = await checkHttp(url);
+  return running ? { ok: true } : { ok: false, error: errorMessage };
 }
 
-export async function startPinix(binaryPath: string, boxliteRest?: string): Promise<{ ok: boolean; error?: string }> {
-  if (!binaryPath) return { ok: false, error: "Pinix binary not found" };
-
-  const free = await isPortFree(PINIX_PORT);
-  if (!free) return { ok: false, error: `Port ${PINIX_PORT} already in use` };
-
-  const args = ["serve", "--addr", `:${PINIX_PORT}`, "--boxlite-rest", boxliteRest || DEFAULT_BOXLITE_REST];
-
+async function startDetachedProcess(binaryPath: string, args: string[], probeUrl: string, errorMessage: string): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
     const child = spawn(binaryPath, args, {
       detached: true,
@@ -270,59 +126,160 @@ export async function startPinix(binaryPath: string, boxliteRest?: string): Prom
     child.unref();
 
     setTimeout(async () => {
-      const running = await checkHttp(`http://localhost:${PINIX_PORT}/pinix.v1.AdminService/ListClips`);
-      if (running) {
-        resolve({ ok: true });
-      } else {
-        resolve({ ok: false, error: "Pinix started but not responding" });
-      }
+      resolve(await waitForService(probeUrl, errorMessage));
     }, 2000);
   });
 }
 
-// --- Generate Token + Bookmark ---
+export async function detectEnvironment(serverUrl?: string): Promise<EnvStatus> {
+  const boxlitePath = findBinary(boxlitePaths());
+  const pinixPath = findBinary(pinixPaths());
+  const config = readPinixConfig();
+  const resolvedServerUrl = serverUrl || config.serverUrl;
 
-export async function generateBookmark(
-  serverUrl: string,
-  superToken: string,
-  clipId: string,
-): Promise<{ name: string; server_url: string; token: string }> {
-  // Generate clip token
-  const genResp = await fetch(serverUrl + "/pinix.v1.AdminService/GenerateToken", {
+  let boxliteStatus: EnvStatus["boxlite"] = "not_installed";
+  if (boxlitePath) {
+    boxliteStatus = (await checkHttp(DEFAULT_BOXLITE_REST)) ? "running" : "installed";
+  }
+
+  let pinixStatus: EnvStatus["pinix"] = "not_installed";
+  if (pinixPath) {
+    pinixStatus = (await checkHttp(`${resolvedServerUrl}/pinix.v1.AdminService/ListClips`)) ? "running" : "installed";
+  }
+
+  return {
+    boxlite: boxliteStatus,
+    boxlitePath,
+    pinix: pinixStatus,
+    pinixPath,
+    serverUrl: resolvedServerUrl,
+    superToken: config.superToken,
+  };
+}
+
+export async function installFromBundle(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const binDir = path.join(homedir(), "bin");
+    const rootfsDir = path.join(homedir(), ".boxlite", "rootfs");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(rootfsDir, { recursive: true });
+
+    for (const name of ["pinix", "boxlite", "boxlite-shim", "boxlite-guest", "libkrunfw.5.dylib"]) {
+      const source = bundledPath("bin", name);
+      const destination = path.join(binDir, name);
+      if (existsSync(source) && !existsSync(destination)) {
+        copyFileSync(source, destination);
+        chmodSync(destination, 0o755);
+      }
+    }
+
+    const rootfsGz = bundledPath("rootfs", "rootfs.ext4.gz");
+    const rootfsDestination = path.join(rootfsDir, "rootfs.ext4");
+    if (existsSync(rootfsGz) && !existsSync(rootfsDestination)) {
+      await pipeline(createReadStream(rootfsGz), createGunzip(), createWriteStream(rootfsDestination));
+    }
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export function hasBundledBinaries(): boolean {
+  return existsSync(bundledPath("bin", "pinix")) && existsSync(bundledPath("bin", "boxlite"));
+}
+
+export async function discoverClips(serverUrl: string, superToken: string): Promise<DiscoveredClip[]> {
+  const response = await fetch(`${serverUrl}/pinix.v1.AdminService/ListClips`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer " + superToken,
+      Authorization: `Bearer ${superToken}`,
+    },
+    body: "{}",
+  });
+
+  if (!response.ok) {
+    throw new Error(`ListClips failed: ${response.status}`);
+  }
+
+  const data = await response.json() as {
+    clips?: Array<{
+      clipId: string;
+      name: string;
+      description?: string;
+      commands?: string[];
+      hasWeb?: boolean;
+      online?: boolean;
+    }>;
+  };
+
+  return (data.clips ?? []).map((clip) => ({
+    clipId: clip.clipId,
+    name: clip.name,
+    description: clip.description ?? "",
+    commands: clip.commands ?? [],
+    hasWeb: clip.hasWeb ?? false,
+    online: clip.online ?? true,
+  }));
+}
+
+export async function startBoxLite(binaryPath: string): Promise<{ ok: boolean; error?: string }> {
+  if (!binaryPath) return { ok: false, error: "BoxLite binary not found" };
+  if (!(await isPortFree(BOXLITE_PORT))) return { ok: false, error: `Port ${BOXLITE_PORT} already in use` };
+  return startDetachedProcess(binaryPath, ["serve", "--port", String(BOXLITE_PORT)], DEFAULT_BOXLITE_REST, "BoxLite started but not responding");
+}
+
+export async function startPinix(binaryPath: string, boxliteRest?: string): Promise<{ ok: boolean; error?: string }> {
+  if (!binaryPath) return { ok: false, error: "Pinix binary not found" };
+  if (!(await isPortFree(PINIX_PORT))) return { ok: false, error: `Port ${PINIX_PORT} already in use` };
+  return startDetachedProcess(
+    binaryPath,
+    ["serve", "--addr", `:${PINIX_PORT}`, "--boxlite-rest", boxliteRest || DEFAULT_BOXLITE_REST],
+    `http://localhost:${PINIX_PORT}/pinix.v1.AdminService/ListClips`,
+    "Pinix started but not responding",
+  );
+}
+
+export async function generateBookmark(serverUrl: string, superToken: string, clipId: string): Promise<ClipBookmark> {
+  const tokenResponse = await fetch(`${serverUrl}/pinix.v1.AdminService/GenerateToken`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${superToken}`,
     },
     body: JSON.stringify({ clipId, label: "dock-auto" }),
   });
 
-  if (!genResp.ok) {
-    throw new Error(`GenerateToken failed: ${genResp.status}`);
+  if (!tokenResponse.ok) {
+    throw new Error(`GenerateToken failed: ${tokenResponse.status}`);
   }
 
-  const genData = await genResp.json() as { token?: string };
-  if (!genData.token) throw new Error("no token in response");
+  const tokenData = await tokenResponse.json() as { token?: string };
+  if (!tokenData.token) throw new Error("no token in response");
 
-  // Get clip info
-  const infoResp = await fetch(serverUrl + "/pinix.v1.ClipService/GetInfo", {
+  const infoResponse = await fetch(`${serverUrl}/pinix.v1.ClipService/GetInfo`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer " + genData.token,
+      Authorization: `Bearer ${tokenData.token}`,
     },
     body: "{}",
   });
 
   let clipName = clipId;
-  if (infoResp.ok) {
-    const info = await infoResp.json() as { name?: string };
+  if (infoResponse.ok) {
+    const info = await infoResponse.json() as { name?: string };
     if (info.name) clipName = info.name;
   }
 
   return {
     name: clipName,
     server_url: serverUrl,
-    token: genData.token,
+    token: tokenData.token,
   };
+}
+
+export async function addBookmarkFromDiscovery(serverUrl: string, superToken: string, clipId: string): Promise<ClipBookmark> {
+  return generateBookmark(serverUrl, superToken, clipId);
 }

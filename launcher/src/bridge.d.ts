@@ -19,6 +19,7 @@ interface DiscoveredClip {
   desc: string;
   commands: string[];
   hasWeb: boolean;
+  online: boolean;
 }
 
 interface LauncherBridge {

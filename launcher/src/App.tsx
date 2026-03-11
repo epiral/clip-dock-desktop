@@ -296,7 +296,10 @@ function App() {
                           {clip.name}
                         </div>
                         {clip.desc && <div className="mt-0.5 text-[11px] text-muted-foreground">{clip.desc}</div>}
-                        {clip.hasWeb && <span className="inline-block mt-1 text-[9px] font-medium tracking-wider uppercase text-muted-foreground border border-border rounded px-1.5 py-0.5">web</span>}
+                        <div className="flex gap-1.5 mt-1">
+                          {clip.hasWeb && <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-muted-foreground border border-border rounded px-1.5 py-0.5">web</span>}
+                          {!clip.online && <span className="inline-block text-[9px] font-medium tracking-wider uppercase text-red-400 border border-red-400/30 rounded px-1.5 py-0.5">offline</span>}
+                        </div>
                       </div>
                       <div className="ml-4 shrink-0 pt-1">
                         {alreadyAdded ? (
