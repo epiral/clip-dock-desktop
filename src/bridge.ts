@@ -17,13 +17,13 @@ import type { ReadFileChunk } from "./gen/pinix/v1/pinix_pb.js";
 import type { Interceptor } from "@connectrpc/connect";
 import type { ClipBookmark } from "./types.js";
 
-// ── Range 解析 ──
-
 type ParsedRange = {
   offset: bigint;
   length: bigint;
   openEnded: boolean;
 };
+
+type CacheableSchemePathPrefix = "web" | "data";
 
 function parseRange(
   rangeHeader: string | undefined
@@ -42,8 +42,6 @@ function parseRange(
     value: { offset: start, length: end - start + 1n, openEnded: false },
   };
 }
-
-// ── MIME 映射（磁盘缓存命中时用） ──
 
 const MIME_MAP: Record<string, string> = {
   ".html": "text/html", ".htm": "text/html",
@@ -65,8 +63,6 @@ function mimeFromPath(filePath: string): string {
   return MIME_MAP[nodePath.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
-// ── RPC 错误映射 ──
-
 function mapRpcError(err: unknown): Response {
   if (err instanceof ConnectError) {
     if (err.code === Code.NotFound) {
@@ -84,20 +80,42 @@ function mapRpcError(err: unknown): Response {
   return new Response(message, { status: 500 });
 }
 
-// ── 工具函数 ──
-
 function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
   const totalLength = arrays.reduce((sum, a) => sum + a.byteLength, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
-  for (const a of arrays) {
-    result.set(a, offset);
-    offset += a.byteLength;
+  for (const array of arrays) {
+    result.set(array, offset);
+    offset += array.byteLength;
   }
   return result;
 }
 
-// ── Scheme 注册（app.ready 前调用） ──
+function isSafeRelativePath(filePath: string): boolean {
+  if (filePath.length === 0 || filePath.includes("\0")) return false;
+  if (nodePath.isAbsolute(filePath)) return false;
+  const segments = filePath.split("/");
+  return segments.every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+
+function normalizeClipPath(url: URL, prefix: CacheableSchemePathPrefix): string | null {
+  const decodedPath = decodeURIComponent(url.pathname);
+  const relPath = decodedPath.replace(/^\/+/, "");
+  const filePath = relPath.startsWith(`${prefix}/`) || relPath === prefix
+    ? relPath
+    : `${prefix}/${relPath}`;
+  return isSafeRelativePath(filePath) ? filePath : null;
+}
+
+async function closeIterator(iterator: AsyncIterator<ReadFileChunk>): Promise<void> {
+  if (typeof iterator.return === "function") {
+    try {
+      await iterator.return();
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
 
 export function registerSchemes(): void {
   const opts = {
@@ -112,8 +130,6 @@ export function registerSchemes(): void {
   ]);
 }
 
-// ── RPC 客户端 ──
-
 export function createClipClient(config: ClipBookmark) {
   const authInterceptor: Interceptor = (next) => (req) => {
     req.header.set("Authorization", `Bearer ${config.token}`);
@@ -126,8 +142,6 @@ export function createClipClient(config: ClipBookmark) {
   return createClient(ClipService, transport);
 }
 
-// ── ETag 内存缓存 ──
-
 type ETagCacheEntry = {
   etag: string;
   data: Uint8Array;
@@ -138,8 +152,6 @@ type ETagCacheEntry = {
 const ETAG_CACHE_MAX = 256;
 const etagCache = new Map<string, ETagCacheEntry>();
 
-// ── 缓存清理（磁盘 + 内存） ──
-
 export function clearClipCache(name: string, cacheDir: string): void {
   const webCacheDir = nodePath.join(cacheDir, name, "web");
   fs.rmSync(webCacheDir, { recursive: true, force: true });
@@ -149,8 +161,6 @@ export function clearClipCache(name: string, cacheDir: string): void {
   }
 }
 
-// ── Scheme handler 注册 ──
-
 export function registerClipSchemeHandlers(
   ses: Session,
   config: ClipBookmark,
@@ -159,7 +169,11 @@ export function registerClipSchemeHandlers(
   const client = createClipClient(config);
   for (const scheme of ["pinix-web", "pinix-data"] as const) {
     if (ses.protocol.isProtocolHandled(scheme)) {
-      ses.protocol.unhandle(scheme);
+      try {
+        ses.protocol.unhandle(scheme);
+      } catch (err) {
+        console.warn(`[bridge] failed to unhandle :`, err);
+      }
     }
   }
   ses.protocol.handle(
@@ -173,8 +187,6 @@ export function registerClipSchemeHandlers(
   return client;
 }
 
-// ── 流式 Response 构建（Range 支持，共用） ──
-
 function buildStreamResponse(
   firstChunk: ReadFileChunk,
   iterator: AsyncIterator<ReadFileChunk>,
@@ -184,56 +196,55 @@ function buildStreamResponse(
   const mimeType = firstChunk.mimeType || "application/octet-stream";
   const totalSize = firstChunk.totalSize;
   const dataOffset = firstChunk.offset;
-  let contentLength: bigint | null = null;
-
-  if (rangeHeader && range) {
-    contentLength = range.openEnded
-      ? (totalSize > dataOffset ? totalSize - dataOffset : 0n)
-      : range.length;
-  } else {
-    contentLength = totalSize;
-  }
+  const contentLength = rangeHeader && range
+    ? (range.openEnded ? (totalSize > dataOffset ? totalSize - dataOffset : 0n) : range.length)
+    : totalSize;
 
   const headers: Record<string, string> = {
     "Content-Type": mimeType,
+    "Content-Length": String(contentLength),
     "Accept-Ranges": "bytes",
   };
-  if (contentLength !== null) {
-    headers["Content-Length"] = contentLength.toString();
-  }
 
-  let status = 200;
   if (rangeHeader && range) {
-    status = 206;
-    if (totalSize > 0n && contentLength !== null) {
-      const actualEnd = dataOffset + contentLength - 1n;
-      headers["Content-Range"] =
-        `bytes ${dataOffset}-${actualEnd}/${totalSize}`;
-    }
+    const end = contentLength > 0n ? dataOffset + contentLength - 1n : dataOffset;
+    headers["Content-Range"] = `bytes ${dataOffset}-${end}/${totalSize}`;
   }
 
+  let finished = false;
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(firstChunk.data);
-    },
-    async pull(controller) {
+    async start(controller) {
       try {
-        const next = await iterator.next();
-        if (next.done) {
-          controller.close();
-        } else {
+        if (firstChunk.data.byteLength > 0) {
+          controller.enqueue(firstChunk.data);
+        }
+        while (true) {
+          const next = await iterator.next();
+          if (next.done) {
+            finished = true;
+            controller.close();
+            return;
+          }
           controller.enqueue(next.value.data);
         }
       } catch (err) {
         controller.error(err);
+      } finally {
+        if (!finished) {
+          await closeIterator(iterator);
+        }
       }
+    },
+    async cancel() {
+      await closeIterator(iterator);
     },
   });
 
-  return new Response(stream, { status, headers });
+  return new Response(stream, {
+    status: rangeHeader ? 206 : 200,
+    headers,
+  });
 }
-
-// ── pinix-web:// 磁盘强缓存 handler ──
 
 function createWebSchemeHandler(
   clipClient: ReturnType<typeof createClipClient>,
@@ -242,13 +253,11 @@ function createWebSchemeHandler(
 ) {
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
-    const relPath = url.pathname.slice(1);
-    const filePath =
-      relPath.startsWith("web/") || relPath === "web"
-        ? relPath
-        : `web/${relPath}`;
+    const filePath = normalizeClipPath(url, "web");
+    if (!filePath) {
+      return new Response("Bad Request", { status: 400 });
+    }
 
-    // 磁盘缓存命中 → 直接返回，不调 RPC
     const cachePath = nodePath.join(cacheDir, alias, filePath);
     try {
       const cached = fs.readFileSync(cachePath);
@@ -260,11 +269,12 @@ function createWebSchemeHandler(
           "Accept-Ranges": "bytes",
         },
       });
-    } catch {
-      // 缓存未命中，走 RPC
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn("[bridge] failed to read web cache:", err);
+      }
     }
 
-    // Range 解析
     const rangeHeader = req.headers.get("Range") ?? undefined;
     const parsedRange = rangeHeader ? parseRange(rangeHeader) : null;
     if (rangeHeader && (!parsedRange || !parsedRange.ok)) {
@@ -281,10 +291,12 @@ function createWebSchemeHandler(
       length: range?.length ?? 0n,
     });
 
+    let iterator: AsyncIterator<ReadFileChunk> | null = null;
     try {
-      const iterator = clipClient.readFile(readReq)[Symbol.asyncIterator]();
+      iterator = clipClient.readFile(readReq)[Symbol.asyncIterator]();
       const first = await iterator.next();
       if (first.done) {
+        await closeIterator(iterator);
         return new Response(new Uint8Array(), {
           status: rangeHeader ? 206 : 200,
           headers: {
@@ -295,25 +307,28 @@ function createWebSchemeHandler(
         });
       }
 
-      // 非 Range → 收集完整数据，原子写入磁盘缓存
       if (!rangeHeader) {
         const chunks: Uint8Array[] = [first.value.data];
-        let next = await iterator.next();
-        while (!next.done) {
-          chunks.push(next.value.data);
-          next = await iterator.next();
+        try {
+          while (true) {
+            const next = await iterator.next();
+            if (next.done) break;
+            chunks.push(next.value.data);
+          }
+        } finally {
+          await closeIterator(iterator);
         }
+
         const fullData = concatUint8Arrays(chunks);
         const mimeType = first.value.mimeType || "application/octet-stream";
 
-        // 原子写入：先写 tmp 再 rename
         try {
           fs.mkdirSync(nodePath.dirname(cachePath), { recursive: true });
           const tmpPath = `${cachePath}.tmp.${process.pid}`;
           fs.writeFileSync(tmpPath, fullData);
           fs.renameSync(tmpPath, cachePath);
-        } catch {
-          // 缓存写入失败不影响响应
+        } catch (err) {
+          console.warn("[bridge] failed to write web cache:", err);
         }
 
         return new Response(Buffer.from(fullData), {
@@ -326,15 +341,15 @@ function createWebSchemeHandler(
         });
       }
 
-      // Range 请求 → 流式返回（不缓存部分数据）
       return buildStreamResponse(first.value, iterator, rangeHeader, range);
     } catch (err) {
+      if (iterator) {
+        await closeIterator(iterator);
+      }
       return mapRpcError(err);
     }
   };
 }
-
-// ── pinix-data:// ETag 内存协商缓存 handler ──
 
 function createDataSchemeHandler(
   clipClient: ReturnType<typeof createClipClient>,
@@ -342,11 +357,10 @@ function createDataSchemeHandler(
 ) {
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
-    const relPath = url.pathname.slice(1);
-    const filePath =
-      relPath.startsWith("data/") || relPath === "data"
-        ? relPath
-        : `data/${relPath}`;
+    const filePath = normalizeClipPath(url, "data");
+    if (!filePath) {
+      return new Response("Bad Request", { status: 400 });
+    }
 
     const cacheKey = `${alias}:${filePath}`;
     const cached = etagCache.get(cacheKey);
@@ -368,10 +382,12 @@ function createDataSchemeHandler(
       ifNoneMatch: cached?.etag ?? "",
     });
 
+    let iterator: AsyncIterator<ReadFileChunk> | null = null;
     try {
-      const iterator = clipClient.readFile(readReq)[Symbol.asyncIterator]();
+      iterator = clipClient.readFile(readReq)[Symbol.asyncIterator]();
       const first = await iterator.next();
       if (first.done) {
+        await closeIterator(iterator);
         return new Response(new Uint8Array(), {
           status: rangeHeader ? 206 : 200,
           headers: {
@@ -382,21 +398,30 @@ function createDataSchemeHandler(
         });
       }
 
-      // ETag 未变 → 直接从内存缓存返回
       if (first.value.notModified && cached) {
+        await closeIterator(iterator);
         if (rangeHeader && range) {
+          if (range.offset >= cached.totalSize) {
+            return new Response(null, {
+              status: 416,
+              headers: {
+                "Accept-Ranges": "bytes",
+                "Content-Range": `bytes */${cached.totalSize}`,
+              },
+            });
+          }
           const start = Number(range.offset);
           const total = Number(cached.totalSize);
-          const end = range.openEnded
+          const exclusiveEnd = range.openEnded
             ? total
             : Math.min(start + Number(range.length), total);
-          const slice = cached.data.slice(start, end);
+          const slice = cached.data.slice(start, exclusiveEnd);
           return new Response(Buffer.from(slice), {
             status: 206,
             headers: {
               "Content-Type": cached.mimeType,
               "Content-Length": String(slice.byteLength),
-              "Content-Range": `bytes ${start}-${end - 1}/${total}`,
+              "Content-Range": `bytes ${start}-${exclusiveEnd - 1}/${total}`,
               "Accept-Ranges": "bytes",
             },
           });
@@ -411,14 +436,18 @@ function createDataSchemeHandler(
         });
       }
 
-      // 非 Range → 收集数据，更新 ETag 缓存
       if (!rangeHeader) {
         const chunks: Uint8Array[] = [first.value.data];
-        let next = await iterator.next();
-        while (!next.done) {
-          chunks.push(next.value.data);
-          next = await iterator.next();
+        try {
+          while (true) {
+            const next = await iterator.next();
+            if (next.done) break;
+            chunks.push(next.value.data);
+          }
+        } finally {
+          await closeIterator(iterator);
         }
+
         const fullData = concatUint8Arrays(chunks);
         const mimeType = first.value.mimeType || "application/octet-stream";
         const etag = first.value.etag;
@@ -426,8 +455,10 @@ function createDataSchemeHandler(
 
         if (etag) {
           if (etagCache.size >= ETAG_CACHE_MAX) {
-            const oldest = etagCache.keys().next().value!;
-            etagCache.delete(oldest);
+            const oldestKey = etagCache.keys().next().value;
+            if (oldestKey) {
+              etagCache.delete(oldestKey);
+            }
           }
           etagCache.set(cacheKey, { etag, data: fullData, mimeType, totalSize });
         }
@@ -442,9 +473,11 @@ function createDataSchemeHandler(
         });
       }
 
-      // Range 请求 + 缓存 stale → 流式返回
       return buildStreamResponse(first.value, iterator, rangeHeader, range);
     } catch (err) {
+      if (iterator) {
+        await closeIterator(iterator);
+      }
       return mapRpcError(err);
     }
   };

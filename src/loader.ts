@@ -4,8 +4,12 @@ import type { ClipBookmark } from "./types.js";
 
 const LOAD_TIMEOUT_MS = 30000;
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 const errorPageHtml = (name: string, reason: string) => `
@@ -19,20 +23,28 @@ export async function loadClip(win: BrowserWindow, config: ClipBookmark): Promis
   const safeName = encodeURIComponent(config.name);
   const url = `pinix-web://${safeName}/index.html`;
 
-  const loadPromise = win.loadURL(url);
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("load timeout")), LOAD_TIMEOUT_MS)
-  );
+  let timeoutId: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("load timeout")), LOAD_TIMEOUT_MS);
+  });
 
   try {
-    await Promise.race([loadPromise, timeoutPromise]);
+    await Promise.race([win.loadURL(url), timeoutPromise]);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "unknown error";
     if (!win.isDestroyed()) {
-      win.webContents.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(errorPageHtml(config.name, reason))}`
-      );
+      try {
+        await win.webContents.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(errorPageHtml(config.name, reason))}`
+        );
+      } catch (fallbackErr) {
+        console.error("[loader] failed to load error page:", fallbackErr);
+      }
     }
     throw err;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
