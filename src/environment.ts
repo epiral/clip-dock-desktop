@@ -220,7 +220,7 @@ export async function discoverClips(serverUrl: string, superToken: string): Prom
     description: clip.description ?? "",
     commands: clip.commands ?? [],
     hasWeb: clip.hasWeb ?? false,
-    online: clip.online ?? true,
+    online: clip.online === true,
   }));
 }
 
