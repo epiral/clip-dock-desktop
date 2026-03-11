@@ -1,16 +1,33 @@
-// preload.ts — Bridge 暴露给 renderer
-// Electron preload 必须是 CJS 格式
-const { contextBridge, ipcRenderer } = require("electron");
+import { contextBridge, ipcRenderer } from "electron";
 
-// streamId 自增计数器，用于区分并发流
+const STREAM_CHANNELS = {
+  chunk: "pinix:stream-chunk",
+  done: "pinix:stream-done",
+} as const;
+
 let streamIdCounter = 0;
+
+function sanitizeBridgePath(inputPath: string): string {
+  if (!inputPath || inputPath.includes("\0")) {
+    throw new Error("invalid path");
+  }
+  if (inputPath.startsWith("/") || inputPath.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(inputPath)) {
+    throw new Error("absolute paths are not allowed");
+  }
+
+  const normalized = inputPath.replace(/\\/g, "/");
+  const segments = normalized.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error("parent path segments are not allowed");
+  }
+
+  return segments.filter(Boolean).join("/");
+}
 
 const Bridge = Object.freeze({
   invoke: (action: string, payload: unknown) =>
     ipcRenderer.invoke("pinix:invoke", action, payload),
   clearCache: () => ipcRenderer.invoke("pinix:clear-cache"),
-
-  // 流式 invoke — 每个 stdout chunk 实时回调，返回 cancel 函数
   invokeStream: (
     command: string,
     opts: { args?: string[]; stdin?: string },
@@ -21,23 +38,23 @@ const Bridge = Object.freeze({
     let cancelled = false;
 
     const cleanup = () => {
-      ipcRenderer.removeListener("pinix:stream-chunk", onStreamChunk);
-      ipcRenderer.removeListener("pinix:stream-done", onStreamDone);
+      ipcRenderer.removeListener(STREAM_CHANNELS.chunk, onStreamChunk);
+      ipcRenderer.removeListener(STREAM_CHANNELS.done, onStreamDone);
     };
 
-    const onStreamChunk = (_e: unknown, id: string, text: string, stream: string) => {
+    const onStreamChunk = (_event: Electron.IpcRendererEvent, id: string, text: string, stream: string) => {
       if (id !== streamId) return;
       if (stream === "stdout") onChunk(text);
     };
 
-    const onStreamDone = (_e: unknown, id: string, exitCode: number) => {
+    const onStreamDone = (_event: Electron.IpcRendererEvent, id: string, exitCode: number) => {
       if (id !== streamId) return;
       cleanup();
       if (!cancelled) onDone(exitCode);
     };
 
-    ipcRenderer.on("pinix:stream-chunk", onStreamChunk);
-    ipcRenderer.on("pinix:stream-done", onStreamDone);
+    ipcRenderer.on(STREAM_CHANNELS.chunk, onStreamChunk);
+    ipcRenderer.on(STREAM_CHANNELS.done, onStreamDone);
     ipcRenderer.send("pinix:invoke-stream", streamId, command, {
       args: opts.args ?? [],
       stdin: opts.stdin ?? "",
@@ -52,39 +69,37 @@ const Bridge = Object.freeze({
 
 contextBridge.exposeInMainWorld("Bridge", Bridge);
 
-// AgentBridge — Clip 数据操作接口
-// readFile 通过 pinix-data:// scheme handler 获取（走 ReadFile RPC streaming）
-// 写操作通过 pinix:invoke IPC 走 ClipService.Invoke RPC
 const AgentBridge = Object.freeze({
   readFile: async (path: string): Promise<string> => {
-    const res = await fetch(`pinix-data://local/data/${path}`);
-    if (!res.ok) throw new Error(`readFile failed (${res.status}): ${path}`);
+    const sanitizedPath = sanitizeBridgePath(path);
+    const res = await fetch(`pinix-data://local/data/${encodeURI(sanitizedPath)}`);
+    if (!res.ok) throw new Error(`readFile failed (${res.status}): ${sanitizedPath}`);
     return await res.text();
   },
   writeFile: async (path: string, content: string): Promise<void> => {
     const r = await ipcRenderer.invoke("pinix:invoke", "writeFile", {
-      args: [path],
+      args: [sanitizeBridgePath(path)],
       stdin: content,
     });
     if (r.exitCode !== 0) throw new Error(r.stderr || "writeFile failed");
   },
   writeBinaryFile: async (path: string, base64: string): Promise<void> => {
     const r = await ipcRenderer.invoke("pinix:invoke", "writeBinaryFile", {
-      args: [path],
+      args: [sanitizeBridgePath(path)],
       stdin: base64,
     });
     if (r.exitCode !== 0) throw new Error(r.stderr || "writeBinaryFile failed");
   },
   listFiles: async (path: string): Promise<string[]> => {
     const r = await ipcRenderer.invoke("pinix:invoke", "listFiles", {
-      args: [path],
+      args: [sanitizeBridgePath(path)],
     });
     if (r.exitCode !== 0) throw new Error(r.stderr || "listFiles failed");
     return r.stdout ? r.stdout.split("\n").filter(Boolean) : [];
   },
   deleteFile: async (path: string): Promise<void> => {
     const r = await ipcRenderer.invoke("pinix:invoke", "deleteFile", {
-      args: [path],
+      args: [sanitizeBridgePath(path)],
     });
     if (r.exitCode !== 0) throw new Error(r.stderr || "deleteFile failed");
   },

@@ -2,7 +2,7 @@
 import { readFileSync, existsSync, copyFileSync, mkdirSync, chmodSync, createReadStream, createWriteStream } from "node:fs";
 import { createGunzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import net from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -11,7 +11,7 @@ import path from "node:path";
 function bundledPath(...parts: string[]): string {
   // In packaged app: process.resourcesPath = .app/Contents/Resources
   // In dev: falls back to cwd
-  const base = (process as any).resourcesPath || path.join(process.cwd(), "vendor");
+  const base = process.resourcesPath || path.join(process.cwd(), "vendor");
   return path.join(base, ...parts);
 }
 
@@ -29,7 +29,7 @@ export interface EnvStatus {
 export interface DiscoveredClip {
   clipId: string;
   name: string;
-  desc: string;
+  description: string;
   commands: string[];
   hasWeb: boolean;
 }
@@ -83,19 +83,21 @@ function readPinixConfig(): { superToken: string; serverUrl: string } {
 }
 
 async function checkHttp(url: string, timeoutMs = 3000): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    timer = setTimeout(() => controller.abort(), timeoutMs);
     const resp = await fetch(url, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-    clearTimeout(timer);
     return resp.status < 500;
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -164,8 +166,8 @@ export async function installFromBundle(): Promise<{ ok: boolean; error?: string
     }
 
     return { ok: true };
-  } catch (err: any) {
-    return { ok: false, error: err.message };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -192,7 +194,7 @@ export async function discoverClips(serverUrl: string, superToken: string): Prom
   const data = await resp.json() as { clips?: Array<{
     clipId: string;
     name: string;
-    desc?: string;
+    description?: string;
     commands?: string[];
     hasWeb?: boolean;
   }> };
@@ -200,7 +202,7 @@ export async function discoverClips(serverUrl: string, superToken: string): Prom
   return (data.clips ?? []).map(c => ({
     clipId: c.clipId,
     name: c.name,
-    desc: c.desc ?? "",
+    description: c.description ?? "",
     commands: c.commands ?? [],
     hasWeb: c.hasWeb ?? false,
   }));
@@ -228,6 +230,11 @@ export async function startBoxLite(binaryPath: string): Promise<{ ok: boolean; e
       detached: true,
       stdio: "ignore",
     });
+
+    child.once("error", (err) => {
+      resolve({ ok: false, error: err.message });
+    });
+
     child.unref();
 
     // Wait a moment then check if it started
@@ -255,6 +262,11 @@ export async function startPinix(binaryPath: string, boxliteRest?: string): Prom
       detached: true,
       stdio: "ignore",
     });
+
+    child.once("error", (err) => {
+      resolve({ ok: false, error: err.message });
+    });
+
     child.unref();
 
     setTimeout(async () => {

@@ -105,7 +105,9 @@ function openClipWindow(config: ClipBookmark): BrowserWindow {
     snapshotRefs.delete(win.id);
     consoleMessages.delete(win.id);
     jsErrors.delete(win.id);
-    ses.clearCache().catch(() => {});
+    void ses.clearCache().catch((err) => {
+      console.warn(`[session] clearCache failed for ${config.name}: ${err instanceof Error ? err.message : err}`);
+    });
   });
 
   // Cmd+R / Ctrl+R → 清缓存并重载 Clip
@@ -198,7 +200,11 @@ function safeJsonParse(raw: string): { ok: true; value: Record<string, unknown> 
   }
 }
 
+let debugServer: http.Server | undefined;
+
 function startDebugServer() {
+  if (debugServer) return;
+
   const server = http.createServer(async (req, res) => {
     const parsed = new NodeURL(req.url ?? "/", "http://localhost:9876");
     const p = parsed.pathname;
@@ -573,6 +579,8 @@ function startDebugServer() {
       if (!res.headersSent) fail(500, msg);
     }
   });
+  debugServer = server;
+
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
       console.warn("[debug] port 9876 in use, debug server disabled");
@@ -694,6 +702,9 @@ app.whenReady().then(() => {
               break;
           }
         }
+        // Flush remaining buffered bytes from decoders
+        stdoutParts.push(stdoutDecoder.decode());
+        stderrParts.push(stderrDecoder.decode());
 
         return {
           stdout: stdoutParts.join(""),
@@ -719,8 +730,16 @@ app.whenReady().then(() => {
       }
 
       const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<string, unknown>;
-      const args = Array.isArray(p.args) ? p.args as string[] : [];
+      const payloadArgs = p.args;
+      const args = Array.isArray(payloadArgs) ? payloadArgs : [];
       const stdin = typeof p.stdin === "string" ? p.stdin : "";
+      const invalidArgs = args.some((arg: unknown) => typeof arg !== "string");
+      const invalidPayload = payloadArgs !== undefined && !Array.isArray(payloadArgs);
+
+      if (invalidArgs || invalidPayload || typeof stdin !== "string" || typeof streamId !== "string" || !streamId) {
+        event.sender.send("pinix:stream-done", typeof streamId === "string" ? streamId : "", -1, "invalid payload");
+        return;
+      }
 
       const req = create(InvokeRequestSchema, {
         name: action,
@@ -753,10 +772,20 @@ app.whenReady().then(() => {
                   "stderr"
                 );
                 break;
-              case "exitCode":
+              case "exitCode": {
+                // Flush remaining buffered bytes before signaling done
+                const flushedStdout = stdoutDecoder.decode();
+                const flushedStderr = stderrDecoder.decode();
+                if (flushedStdout && !event.sender.isDestroyed()) {
+                  event.sender.send("pinix:stream-chunk", streamId, flushedStdout, "stdout");
+                }
+                if (flushedStderr && !event.sender.isDestroyed()) {
+                  event.sender.send("pinix:stream-chunk", streamId, flushedStderr, "stderr");
+                }
                 doneEmitted = true;
                 event.sender.send("pinix:stream-done", streamId, chunk.payload.value);
                 break;
+              }
             }
           }
           // Fallback: guarantee stream-done even if exitCode chunk was missing
@@ -818,4 +847,11 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   app.quit();
+});
+
+app.on("before-quit", () => {
+  if (debugServer) {
+    debugServer.close();
+    debugServer = undefined;
+  }
 });
